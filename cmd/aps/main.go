@@ -45,8 +45,11 @@ func run() error {
 		}
 	}
 
+	st := store.New(pool)
+	go api.RunExpirySweeper(ctx, st, 10*time.Second)
+
 	log.Printf("aps listening on %s", addr)
-	return http.ListenAndServe(addr, api.NewRouter(pool))
+	return http.ListenAndServe(addr, api.NewRouter(st))
 }
 
 // connectWithRetry waits for postgres to accept connections — in docker

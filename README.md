@@ -34,6 +34,38 @@ Password resets are a SQL one-liner by design (pgcrypto):
 UPDATE users SET password_hash = crypt('new-password', gen_salt('bf')) WHERE username = 'alice';
 ```
 
+## Try the decision loop (curl)
+
+```sh
+KEY="aps_demo_bot_key_5f2a9c"
+
+# Auto-allowed by policy: instant verdict
+curl -s -X POST localhost:8080/v1/actions -H "X-API-Key: $KEY" -H 'Content-Type: application/json' \
+  -d '{"type":"db.query","payload":{"sql":"SELECT id FROM orders LIMIT 5"}}'
+
+# Gated: goes pending, returns an id to poll
+curl -s -X POST localhost:8080/v1/actions -H "X-API-Key: $KEY" -H 'Content-Type: application/json' \
+  -d '{"type":"db.query","payload":{"sql":"UPDATE payments SET status=1 WHERE id=7"}}'
+
+# A human logs in and decides
+TOKEN=$(curl -s -X POST localhost:8080/v1/login -H 'Content-Type: application/json' \
+  -d '{"username":"alice","password":"password123"}' | python3 -c 'import json,sys;print(json.load(sys.stdin)["token"])')
+curl -s -X POST localhost:8080/v1/actions/<id>/decision -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"decision":"approve","note":"looks right"}'
+
+# Bot polls, then consumes the approval (single-use)
+curl -s localhost:8080/v1/actions/<id> -H "X-API-Key: $KEY"
+curl -s -X POST localhost:8080/v1/actions/<id>/executed -H "X-API-Key: $KEY" \
+  -H 'Content-Type: application/json' -d '{"success":true}'
+```
+
+Semantics: `deny` > `require_approval` > `allow`; no matching policy ⇒ a human
+decides (fail closed). First decision wins (a second decider gets 409).
+Requests expire after their TTL (default 15 min; the bot may request longer up
+front, capped by `max_ttl_seconds`). Approvals are single-use. Disabled bots
+get deny-all; setting `auto_allow_suspended` to `true` in `system_settings`
+sends every action back to a human.
+
 ## Development
 
 ```sh
@@ -60,5 +92,6 @@ docs/               architecture doc
 
 ## Status
 
-Milestone 0 of the [MVP plan](docs/architecture.html#mvp): scaffold, schema
-(all seven tables), seed data, health check. The decision API is milestone 1.
+Milestone 1 of the [MVP plan](docs/architecture.html#mvp): the decision loop
+works end-to-end over curl — submit, evaluate, approve/deny, execute, expire,
+audit. Milestone 2 (the dashboard) is next.
