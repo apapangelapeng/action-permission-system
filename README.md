@@ -12,9 +12,18 @@ Full design: [docs/architecture.html](docs/architecture.html) (open in a browser
 docker compose up --build
 ```
 
-Then visit <http://localhost:8080>. On first boot the database is created,
-migrated, and seeded with demo data (seeding only happens on an empty
-database; wipe with `docker compose down -v` to re-seed).
+Then visit <http://localhost:8080> and sign in (demo accounts below). On
+first boot the database is created, migrated, and seeded with demo data
+(seeding only happens on an empty database; wipe with `docker compose down -v`
+to re-seed).
+
+The dashboard has five screens: **Queue** (pending requests with the raw
+payload front and center — the bot's summary is shown as an unverified
+caption), **Activity** (every request and its outcome), **Policies**
+(read-only until milestone 3), **Audit** (the append-only trail), and
+**Controls** (both kill switches: disable a bot, or suspend all auto-allow).
+Approvals are first-decision-wins: open two browser windows as alice and bob,
+decide the same request in both, and the loser gets told who beat them.
 
 ### Demo credentials
 
@@ -92,6 +101,7 @@ docs/               architecture doc
 
 ## Status
 
-Milestone 1 of the [MVP plan](docs/architecture.html#mvp): the decision loop
-works end-to-end over curl — submit, evaluate, approve/deny, execute, expire,
-audit. Milestone 2 (the dashboard) is next.
+Milestone 2 of the [MVP plan](docs/architecture.html#mvp): the decision loop
+(milestone 1) plus the dashboard — login, approval queue, activity, audit
+browser, and kill-switch controls. Milestone 3 (policy creation, human and
+bot) is next.

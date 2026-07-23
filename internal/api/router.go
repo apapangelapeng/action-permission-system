@@ -29,6 +29,15 @@ func NewRouter(st *store.Store) http.Handler {
 	// humans
 	mux.HandleFunc("POST /v1/login", h.login)
 	mux.HandleFunc("POST /v1/actions/{id}/decision", h.decideAction)
+	mux.HandleFunc("GET /v1/actions", h.listActions)
+	mux.HandleFunc("GET /v1/audit", h.listAudit)
+	mux.HandleFunc("GET /v1/bots", h.listBots)
+	mux.HandleFunc("GET /v1/users", h.listUsers)
+	mux.HandleFunc("GET /v1/policies", h.listPolicies)
+	mux.HandleFunc("POST /v1/bots/{id}/disable", h.setBotDisabled(true))
+	mux.HandleFunc("POST /v1/bots/{id}/enable", h.setBotDisabled(false))
+	mux.HandleFunc("GET /v1/system/auto-allow", h.getAutoAllow)
+	mux.HandleFunc("PUT /v1/system/auto-allow", h.putAutoAllow)
 
 	// bots
 	mux.HandleFunc("POST /v1/actions", h.submitAction)
