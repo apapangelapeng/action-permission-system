@@ -1,0 +1,774 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Action Permission System — Architecture</title>
+</head>
+<body>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --surface: #ffffff;
+    --surface-2: #eef1f5;
+    --text: #1b2334;
+    --muted: #5b6577;
+    --line: #dde2ea;
+    --accent: #2450c8;
+    --accent-ink: #ffffff;
+    --ok: #1e7a4c;
+    --ok-bg: #e3f2ea;
+    --warn: #8f6510;
+    --warn-bg: #f7edd6;
+    --err: #b03330;
+    --err-bg: #f9e6e5;
+    --code-bg: #eef1f5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #11141b;
+      --surface: #1a1f29;
+      --surface-2: #222836;
+      --text: #e7ebf3;
+      --muted: #9aa4b8;
+      --line: #2c3444;
+      --accent: #85a6f2;
+      --accent-ink: #0f1524;
+      --ok: #55c48b;
+      --ok-bg: #16301f;
+      --warn: #e0b04f;
+      --warn-bg: #33280e;
+      --err: #e57a72;
+      --err-bg: #391716;
+      --code-bg: #232937;
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #f6f7f9;
+    --surface: #ffffff;
+    --surface-2: #eef1f5;
+    --text: #1b2334;
+    --muted: #5b6577;
+    --line: #dde2ea;
+    --accent: #2450c8;
+    --accent-ink: #ffffff;
+    --ok: #1e7a4c;
+    --ok-bg: #e3f2ea;
+    --warn: #8f6510;
+    --warn-bg: #f7edd6;
+    --err: #b03330;
+    --err-bg: #f9e6e5;
+    --code-bg: #eef1f5;
+  }
+  :root[data-theme="dark"] {
+    --bg: #11141b;
+    --surface: #1a1f29;
+    --surface-2: #222836;
+    --text: #e7ebf3;
+    --muted: #9aa4b8;
+    --line: #2c3444;
+    --accent: #85a6f2;
+    --accent-ink: #0f1524;
+    --ok: #55c48b;
+    --ok-bg: #16301f;
+    --warn: #e0b04f;
+    --warn-bg: #33280e;
+    --err: #e57a72;
+    --err-bg: #391716;
+    --code-bg: #232937;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: Charter, "Iowan Old Style", Georgia, "Times New Roman", serif;
+    font-size: 17px;
+    line-height: 1.55;
+    margin: 0;
+  }
+  .wrap {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 48px 24px 96px;
+  }
+  h1, h2, h3, h4, .sans {
+    font-family: "Avenir Next", "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+  h1 { font-size: 2rem; font-weight: 700; margin: 8px 0 4px; text-wrap: balance; }
+  h2 { font-size: 1.35rem; font-weight: 700; margin: 0 0 4px; text-wrap: balance; }
+  h3 { font-size: 1.05rem; font-weight: 600; margin: 24px 0 8px; }
+  p { max-width: 70ch; margin: 10px 0; }
+  a { color: var(--accent); }
+  code, .mono {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.86em;
+  }
+  code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+  section { margin-top: 56px; }
+  .eyebrow {
+    font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0;
+  }
+  .section-head { border-bottom: 1px solid var(--line); padding-bottom: 12px; margin-bottom: 20px; }
+  .lede { font-size: 1.08rem; color: var(--muted); max-width: 64ch; }
+
+  .toc {
+    display: flex; flex-wrap: wrap; gap: 8px 18px;
+    padding: 14px 0 0; margin: 0; list-style: none;
+    font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+    font-size: 0.85rem;
+  }
+  .toc a { text-decoration: none; color: var(--muted); }
+  .toc a:hover, .toc a:focus-visible { color: var(--accent); }
+  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+
+  .pill {
+    display: inline-block;
+    font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+    font-size: 0.72rem; font-weight: 600;
+    letter-spacing: 0.04em;
+    padding: 2px 9px; border-radius: 999px;
+    white-space: nowrap;
+  }
+  .pill.ok   { color: var(--ok);   background: var(--ok-bg); }
+  .pill.warn { color: var(--warn); background: var(--warn-bg); }
+  .pill.err  { color: var(--err);  background: var(--err-bg); }
+  .pill.neutral { color: var(--muted); background: var(--surface-2); }
+
+  /* system diagram */
+  .diagram { overflow-x: auto; padding: 4px 0 8px; }
+  .sysgrid {
+    display: grid;
+    grid-template-columns: 180px 28px minmax(300px, 1fr) 28px 180px;
+    gap: 12px; align-items: center;
+    min-width: 780px;
+  }
+  .node {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+    font-size: 0.85rem;
+  }
+  .node .t { font-weight: 700; display: block; margin-bottom: 2px; }
+  .node .d { color: var(--muted); font-size: 0.78rem; line-height: 1.4; }
+  .node.core { border-color: var(--accent); }
+  .arrow {
+    color: var(--muted); text-align: center;
+    font-family: "Avenir Next", system-ui, sans-serif; font-size: 1.1rem;
+  }
+  .internals { display: grid; gap: 8px; }
+  .internals .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .subnode {
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 0.78rem;
+    font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  }
+  .subnode b { display: block; font-size: 0.8rem; }
+  .subnode span { color: var(--muted); }
+
+  /* generic tables */
+  .tbl-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-size: 0.86rem; }
+  th, td { text-align: left; padding: 8px 12px; border-top: 1px solid var(--line); vertical-align: top; }
+  thead th {
+    border-top: none;
+    font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+    font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--muted); background: var(--surface-2);
+  }
+  td:first-child, th:first-child { padding-left: 14px; }
+  tbody tr:hover { background: var(--surface-2); }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* schema cards */
+  .schema-card { margin-top: 28px; }
+  .schema-card > header {
+    display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+    margin-bottom: 8px;
+  }
+  .schema-card > header h3 { margin: 0; }
+  .schema-card > header .why { color: var(--muted); font-size: 0.9rem; }
+  .schema-card td.col-name { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.82rem; white-space: nowrap; }
+  .schema-card td.col-type { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.78rem; color: var(--muted); white-space: nowrap; }
+  .pk { color: var(--accent); font-weight: 700; }
+  .fk { color: var(--warn); }
+
+  /* flows */
+  .flow {
+    border: 1px solid var(--line); border-radius: 8px;
+    background: var(--surface);
+    padding: 16px 18px;
+    margin-top: 16px;
+  }
+  .flow h4 { margin: 0 0 10px; font-size: 0.95rem; }
+  .flow ol { list-style: none; margin: 0; padding: 0; }
+  .flow li {
+    display: grid;
+    grid-template-columns: 92px 1fr;
+    gap: 12px;
+    padding: 7px 0;
+    border-top: 1px dashed var(--line);
+    font-size: 0.92rem;
+  }
+  .flow li:first-child { border-top: none; }
+  .actor {
+    font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+    font-size: 0.72rem; font-weight: 700; letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding-top: 3px;
+  }
+  .actor.bot { color: var(--accent); }
+  .actor.human { color: var(--ok); }
+  .actor.system { color: var(--muted); }
+
+  .callout {
+    border-left: 3px solid var(--accent);
+    background: var(--surface);
+    border-radius: 0 8px 8px 0;
+    padding: 12px 16px;
+    margin: 18px 0;
+    font-size: 0.95rem;
+    max-width: 74ch;
+  }
+  .callout.risk { border-left-color: var(--err); }
+  .callout b:first-child { font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif; font-size: 0.9rem; }
+
+  .cols2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 16px 18px;
+  }
+  .card h3 { margin-top: 0; }
+  .card ul { margin: 8px 0 0; padding-left: 18px; font-size: 0.92rem; }
+  .card li { margin: 4px 0; }
+
+  pre {
+    background: var(--code-bg);
+    border-radius: 8px;
+    padding: 14px 16px;
+    overflow-x: auto;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  pre code { background: none; padding: 0; }
+
+  .impact {
+    font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+    font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em;
+    text-transform: uppercase; white-space: nowrap;
+  }
+  .impact.high { color: var(--err); }
+  .impact.med { color: var(--warn); }
+
+  .statechain {
+    display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+    font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+    font-size: 0.8rem;
+    margin: 10px 0;
+  }
+  .statechain .sep { color: var(--muted); }
+  footer.docfoot {
+    margin-top: 72px; padding-top: 16px; border-top: 1px solid var(--line);
+    color: var(--muted); font-size: 0.85rem;
+    font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  }
+</style>
+
+<div class="wrap">
+
+<header>
+  <p class="eyebrow">Architecture &middot; Design Doc &middot; v0.1 (pre-implementation)</p>
+  <h1>Action Permission System</h1>
+  <p class="lede">A self-hosted permission layer for AI bots. The bot asks before it acts; policies auto-allow the routine, humans approve the rest, and everything — every attempt, every decision, every rule change — lands in an audit trail.</p>
+  <ul class="toc">
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#system">System diagram</a></li>
+    <li><a href="#components">Components</a></li>
+    <li><a href="#decisions">How decisions are made</a></li>
+    <li><a href="#datamodel">Data model</a></li>
+    <li><a href="#flows">Key flows</a></li>
+    <li><a href="#recursion">Policy recursion</a></li>
+    <li><a href="#choices">Decision log</a></li>
+    <li><a href="#open">Open questions</a></li>
+    <li><a href="#repo">Repo layout</a></li>
+    <li><a href="#mvp">MVP cut</a></li>
+  </ul>
+</header>
+
+<section id="overview">
+  <div class="section-head">
+    <p class="eyebrow">01</p>
+    <h2>Overview</h2>
+  </div>
+  <p>The system sits between a bot and the outside world as a <b>decision service</b>: before performing any action — a database query, a POST to an API, sending an email — the bot submits a structured description of the action and waits for a verdict. The service replies with one of three answers:</p>
+  <div class="statechain">
+    <span class="pill ok">allow</span><span class="sep">/</span>
+    <span class="pill err">deny</span><span class="sep">/</span>
+    <span class="pill warn">pending — a human must decide</span>
+  </div>
+  <p><b>Default posture is fail-closed:</b> until someone writes a policy saying otherwise, <em>every</em> action requires human approval. Policies carve out the routine ("reads are fine") so humans only see what matters. The service never speaks SQL or HTTP itself — it judges action <em>descriptions</em> — which is what keeps it generic across any action type.</p>
+  <p>Approvals are <b>single-use</b>: one approval unlocks exactly one execution of one request, then it is consumed. If the bot wants something to become repeatable, it proposes a <em>policy</em> — and bot-proposed policies themselves require human approval. That recursion, capped by a depth limit, replaces "standing grants" entirely.</p>
+</section>
+
+<section id="system">
+  <div class="section-head">
+    <p class="eyebrow">02</p>
+    <h2>System diagram</h2>
+  </div>
+  <div class="diagram">
+    <div class="sysgrid">
+      <div>
+        <div class="node">
+          <span class="t">Bot + SDK</span>
+          <span class="d">Any agent. A thin client wraps its tool-execution layer: submit action &rarr; poll &rarr; execute only on <b>allow</b>. Authenticates with a bot API key.</span>
+        </div>
+      </div>
+      <div class="arrow" aria-label="HTTP">&#8644;</div>
+      <div class="node core">
+        <span class="t">APS — one Go binary</span>
+        <div class="internals">
+          <div class="row">
+            <div class="subnode"><b>REST API</b><span>check / poll / decide / policies</span></div>
+            <div class="subnode"><b>Policy engine</b><span>ordered rules, Matcher interface</span></div>
+          </div>
+          <div class="row">
+            <div class="subnode"><b>Approval manager</b><span>request state machine, expiry sweep</span></div>
+            <div class="subnode"><b>Audit logger</b><span>append-only event stream</span></div>
+          </div>
+          <div class="row">
+            <div class="subnode"><b>Auth</b><span>user sessions + bot API keys</span></div>
+            <div class="subnode"><b>PostgreSQL</b><span>dedicated database service</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="arrow" aria-label="serves">&#8644;</div>
+      <div>
+        <div class="node">
+          <span class="t">Dashboard (Svelte)</span>
+          <span class="d">Humans log in to approve/deny pending requests, review bot-proposed policies, and browse the audit trail. Built assets embedded in the binary.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="lede" style="font-size:0.9rem">Two containers, one <code>docker compose up</code>: the Go service (with the dashboard baked in) and PostgreSQL.</p>
+</section>
+
+<section id="components">
+  <div class="section-head">
+    <p class="eyebrow">03</p>
+    <h2>Components</h2>
+  </div>
+  <div class="cols2">
+    <div class="card">
+      <h3>Go service (single binary)</h3>
+      <ul>
+        <li><b>REST API</b> — bots check actions and poll verdicts; humans decide; both manage policies. Versioned under <code>/v1</code>.</li>
+        <li><b>Policy engine</b> — evaluates a request against active policies in priority order. Policy selection is indexed, not scanned: because wildcards are trailing-only, an action type like <code>db.admin.drop</code> can only ever match the candidate patterns <code>db.admin.drop</code>, <code>db.admin.*</code>, <code>db.*</code>, <code>*</code> — depth&nbsp;+&nbsp;1 hash/btree lookups regardless of total policy count. Payload matching then goes through a pluggable <code>Matcher</code> interface: <code>exact</code> and <code>regex</code> in v1; <code>llm</code> ("ask a model to judge") is a planned second implementation, fail-closed and rationale-logged.</li>
+        <li><b>Approval manager</b> — owns the request state machine, enforces first-decision-wins atomically, expires stale requests.</li>
+        <li><b>Audit logger</b> — every state change writes an append-only event; nothing in the code path updates or deletes events.</li>
+        <li><b>Storage</b> — PostgreSQL via a thin store layer (pgx + versioned migrations); Svelte build embedded with <code>embed.FS</code>.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Svelte dashboard</h3>
+      <ul>
+        <li><b>Approval queue</b> — pending requests, oldest/most-urgent first. Shows the <em>raw payload</em>, not just the bot's summary (see summary-spoofing, <a href="#open">open questions</a>).</li>
+        <li><b>Policy editor</b> — humans create, version, and disable policies directly (no queue for their own rules); every change is audit-logged with its author.</li>
+        <li><b>Policy review</b> — bot-proposed policies rendered human-readably, with a diff against what the bot could already do.</li>
+        <li><b>Audit browser</b> — filterable timeline: what the bot tried, which policy decided, who said yes.</li>
+        <li><b>Kill switches</b> — disable a misbehaving bot (deny-all) or suspend all auto-allow system-wide, each one click and audit-logged.</li>
+        <li><b>Login</b> — individual accounts; every decision is attributed to a person.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>SDK (bot-side helper)</h3>
+      <ul>
+        <li>v1 ships a Go client; the HTTP contract is deliberately plain so any language can integrate with two endpoints.</li>
+        <li><code>Check(action)</code> submits and blocks: instant verdict if a policy matched, otherwise polls until a human decides or the request expires. To the bot, a gated action just looks slow. An optional TTL parameter requests a longer window than the 15-minute default.</li>
+        <li>Sends an <code>idempotency_key</code> so a retried submit can't create duplicate pending requests.</li>
+        <li>The API reserves a webhook registration endpoint so "notify the bot instead of polling" can be added without breaking the contract.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Core API surface (sketch)</h3>
+      <ul>
+        <li><code>POST /v1/actions</code> — submit an action for judgment</li>
+        <li><code>GET /v1/actions/:id</code> — poll status / verdict</li>
+        <li><code>POST /v1/actions/:id/executed</code> — bot reports outcome</li>
+        <li><code>POST /v1/actions/:id/decision</code> — human approves/denies</li>
+        <li><code>GET /v1/policies</code> — list policies with status + version lineage</li>
+        <li><code>POST /v1/policies</code> — create a policy. Session-authenticated humans activate immediately (author = approver, depth 0); API-key bots enter the approval queue. Both paths are audit-logged.</li>
+        <li><code>POST /v1/policies/:id/decision</code> — human approves/rejects a bot proposal</li>
+        <li><code>POST /v1/policies/:id/versions</code> — edit = create a successor version (immutable lineage)</li>
+        <li><code>POST /v1/policies/:id/disable</code> — retire a policy and its bot-made descendants</li>
+        <li><code>POST /v1/bots/:id/disable</code> — per-bot kill switch: deny-all, instantly</li>
+        <li><code>PUT /v1/system/auto-allow</code> — global kill switch: suspend/restore all auto-allow</li>
+        <li><code>GET /v1/audit</code> — filterable event stream</li>
+        <li><code>POST /v1/webhooks</code> — reserved for v1.x</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="decisions">
+  <div class="section-head">
+    <p class="eyebrow">04</p>
+    <h2>How a decision is made</h2>
+  </div>
+  <p>An action request carries a <code>type</code> (e.g. <code>db.query</code>, <code>http.post</code>, <code>email.send</code> — free-form, defined by the integrator) and a <code>payload</code> of parameters. The engine evaluates all <b>active</b> policies whose <code>action_type_pattern</code> matches, runs each policy's matcher against the payload, and combines results by strict precedence:</p>
+  <div class="statechain">
+    <span class="pill err">deny</span><span class="sep">overrides</span>
+    <span class="pill warn">require_approval</span><span class="sep">overrides</span>
+    <span class="pill ok">allow</span><span class="sep">&middot;&nbsp;&nbsp;no match &rarr;</span>
+    <span class="pill warn">require_approval</span>
+  </div>
+  <ul>
+    <li><b>Deny always wins — order never decides the outcome.</b> The engine sorts matching policies by <code>priority</code> (ascending, so 10 runs before 100), evaluates their matchers, and combines <em>all</em> fired effects by precedence. Unlike "first match wins" systems, no allow can shadow a deny by being earlier in the list; priority only fixes which same-effect policy gets credited in the audit trail, and lets evaluation stop early once a deny fires.</li>
+    <li><b>Silence is a question, not a yes.</b> Anything no policy speaks to goes to a human — this is the "default all actions to user approval" posture.</li>
+    <li><b>Errors fail closed.</b> A broken regex, a store error, a future LLM-matcher timeout — all resolve to <code>require_approval</code>, never to <code>allow</code>.</li>
+    <li><b>Kill switches sit above the policies.</b> A disabled bot gets <code>deny</code> on everything before any policy runs. When the global <code>auto_allow_suspended</code> flag is on, every <code>allow</code> verdict is downgraded to <code>require_approval</code> (denies stay denies) — one click puts a human back in front of every action without touching a single policy.</li>
+    <li><b>Every evaluation is recorded</b> with the matched policy <em>and its version</em>, so the audit trail can always answer "why was this allowed?"</li>
+  </ul>
+  <div class="callout">
+    <b>Example policy set for a database bot:</b><br>
+    <code>db.query</code> + regex <code>^\s*SELECT</code> &rarr; <b>allow</b> &nbsp;&middot;&nbsp; <code>db.query</code> + regex <code>users|payments</code> &rarr; <b>require_approval</b> &nbsp;&middot;&nbsp; <code>db.query</code> + regex <code>DROP|TRUNCATE</code> &rarr; <b>deny</b>.
+    A <code>SELECT * FROM payments</code> matches both an allow and a require_approval rule — precedence sends it to a human. Exactly right.
+  </div>
+</section>
+
+<section id="datamodel">
+  <div class="section-head">
+    <p class="eyebrow">05</p>
+    <h2>Data model</h2>
+    <p class="lede" style="font-size:0.95rem">Seven tables in PostgreSQL. Conventions: primary keys are ULIDs stored as <code>TEXT</code> (sortable by creation time); timestamps are <code>TIMESTAMPTZ</code> (always UTC); structured payloads are <code>JSONB</code>, validated in the app layer and queryable in SQL. <span class="pk">PK</span> = primary key, <span class="fk">FK</span> = foreign key.</p>
+  </div>
+
+  <div class="schema-card">
+    <header><h3><code>users</code></h3><span class="why">the humans who log in and decide</span></header>
+    <div class="tbl-scroll"><table>
+      <thead><tr><th>Column</th><th>Type</th><th>Constraints</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td class="col-name">id</td><td class="col-type">TEXT</td><td><span class="pk">PK</span> (ULID)</td><td>Stable identifier referenced by every decision.</td></tr>
+        <tr><td class="col-name">name</td><td class="col-type">TEXT</td><td>NOT NULL</td><td>Display name shown in the queue and audit trail.</td></tr>
+        <tr><td class="col-name">username</td><td class="col-type">TEXT</td><td>UNIQUE NOT NULL</td><td>Login identifier — no email required to run the system.</td></tr>
+        <tr><td class="col-name">password_hash</td><td class="col-type">TEXT</td><td>NOT NULL</td><td>bcrypt hash in <code>crypt()</code> format, computed by Postgres's <code>pgcrypto</code> extension — so it can be written and verified with plain SQL (see below), while staying a proper salted hash.</td></tr>
+        <tr><td class="col-name">role</td><td class="col-type">TEXT</td><td>NOT NULL DEFAULT 'approver'</td><td>Reserved for future tiers (e.g. only admins approve policies). v1 treats everyone as equal.</td></tr>
+        <tr><td class="col-name">created_at</td><td class="col-type">TIMESTAMPTZ</td><td>NOT NULL</td><td>When the account was created.</td></tr>
+        <tr><td class="col-name">disabled_at</td><td class="col-type">TIMESTAMPTZ</td><td>NULL</td><td>Soft delete — history must keep pointing at real people, so users are never hard-deleted.</td></tr>
+      </tbody>
+    </table></div>
+    <div class="callout">
+      <b>Password recovery is a SQL one-liner, by design.</b> Self-hosted means no "forgot password" email flow to lean on. Because hashes are produced by <code>pgcrypto</code>'s <code>crypt()</code>, an admin with database access can reset any account directly:<br>
+      <code>UPDATE users SET password_hash = crypt('new-password', gen_salt('bf')) WHERE username = 'alice';</code><br>
+      Login verification is the same function: <code>password_hash = crypt(entered_password, password_hash)</code>. Still salted bcrypt — the escape hatch costs nothing in hash strength. Requires <code>CREATE EXTENSION pgcrypto;</code> in the initial migration.
+    </div>
+  </div>
+
+  <div class="schema-card">
+    <header><h3><code>bots</code></h3><span class="why">the agents that must ask</span></header>
+    <div class="tbl-scroll"><table>
+      <thead><tr><th>Column</th><th>Type</th><th>Constraints</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td class="col-name">id</td><td class="col-type">TEXT</td><td><span class="pk">PK</span> (ULID)</td><td>Bot identity; every request and bot-authored policy points here.</td></tr>
+        <tr><td class="col-name">name</td><td class="col-type">TEXT</td><td>UNIQUE NOT NULL</td><td>Human-readable name ("deploy-bot").</td></tr>
+        <tr><td class="col-name">api_key_hash</td><td class="col-type">TEXT</td><td>UNIQUE NOT NULL</td><td>SHA-256 of the bot's API key; the key itself is shown once at creation.</td></tr>
+        <tr><td class="col-name">created_by</td><td class="col-type">TEXT</td><td><span class="fk">FK</span> users.id, NOT NULL</td><td>Which human registered this bot.</td></tr>
+        <tr><td class="col-name">created_at</td><td class="col-type">TIMESTAMPTZ</td><td>NOT NULL</td><td>Registration time.</td></tr>
+        <tr><td class="col-name">disabled_at</td><td class="col-type">TIMESTAMPTZ</td><td>NULL</td><td>Kill switch per bot: disabled bots get <code>deny</code> on everything, instantly.</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+
+  <div class="schema-card">
+    <header><h3><code>policies</code></h3><span class="why">the rules — including rules the bot proposed</span></header>
+    <div class="tbl-scroll"><table>
+      <thead><tr><th>Column</th><th>Type</th><th>Constraints</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td class="col-name">id</td><td class="col-type">TEXT</td><td><span class="pk">PK</span> (ULID)</td><td>Identity of this policy <em>version</em> — editing a policy creates a new row (see <code>supersedes_policy_id</code>).</td></tr>
+        <tr><td class="col-name">name</td><td class="col-type">TEXT</td><td>NOT NULL</td><td>Short label ("db-reads-auto").</td></tr>
+        <tr><td class="col-name">description</td><td class="col-type">TEXT</td><td>NOT NULL</td><td>Why this rule exists — shown to the approving human.</td></tr>
+        <tr><td class="col-name">action_type_pattern</td><td class="col-type">TEXT</td><td>NOT NULL</td><td>Which action types this policy covers: exact (<code>db.query</code>) or glob (<code>db.*</code>).</td></tr>
+        <tr><td class="col-name">matcher_type</td><td class="col-type">TEXT</td><td>NOT NULL CHECK IN ('exact','regex','llm')</td><td>How the payload is inspected. <code>llm</code> is reserved for v1.x — the schema accepts it now so no migration later.</td></tr>
+        <tr><td class="col-name">matcher_config</td><td class="col-type">JSONB</td><td>NOT NULL</td><td>Matcher parameters, e.g. <code>{"field":"sql","pattern":"^\\s*SELECT"}</code>; for llm later: prompt, model, thresholds.</td></tr>
+        <tr><td class="col-name">effect</td><td class="col-type">TEXT</td><td>NOT NULL CHECK IN ('allow','require_approval','deny')</td><td>What happens on match, combined by deny &gt; require_approval &gt; allow.</td></tr>
+        <tr><td class="col-name">priority</td><td class="col-type">INTEGER</td><td>NOT NULL DEFAULT 100</td><td>Evaluation order: lower numbers are checked first (10 before 100). Never changes the verdict — effect precedence does that. It decides which policy is credited as <code>matched_policy_id</code> when several match with the same effect, and lets the engine stop early on the first deny.</td></tr>
+        <tr><td class="col-name">status</td><td class="col-type">TEXT</td><td>NOT NULL CHECK IN ('draft','pending_approval','active','disabled','rejected')</td><td>Lifecycle. Only <code>active</code> policies are evaluated.</td></tr>
+        <tr><td class="col-name">version</td><td class="col-type">INTEGER</td><td>NOT NULL DEFAULT 1</td><td>Monotonic per policy lineage; the audit trail records exactly which version decided an action.</td></tr>
+        <tr><td class="col-name">supersedes_policy_id</td><td class="col-type">TEXT</td><td><span class="fk">FK</span> policies.id, NULL</td><td>Points at the version this row replaces — policies are immutable once active; edits create successors.</td></tr>
+        <tr><td class="col-name">created_by_kind</td><td class="col-type">TEXT</td><td>NOT NULL CHECK IN ('human','bot')</td><td>Who authored it — the recursion hinge.</td></tr>
+        <tr><td class="col-name">created_by_id</td><td class="col-type">TEXT</td><td>NOT NULL</td><td>users.id or bots.id depending on kind.</td></tr>
+        <tr><td class="col-name">authorized_by_policy_id</td><td class="col-type">TEXT</td><td><span class="fk">FK</span> policies.id, NULL</td><td>For bot-created policies: which policy granted the right to propose it. Forms the provenance chain.</td></tr>
+        <tr><td class="col-name">depth</td><td class="col-type">INTEGER</td><td>NOT NULL DEFAULT 0</td><td>Length of that chain. Human-authored = 0; a bot policy = parent depth + 1; creation is rejected beyond the configured limit.</td></tr>
+        <tr><td class="col-name">approved_by</td><td class="col-type">TEXT</td><td><span class="fk">FK</span> users.id, NULL</td><td>Who activated it. NULL only while draft/pending — every active policy names its human.</td></tr>
+        <tr><td class="col-name">approved_at</td><td class="col-type">TIMESTAMPTZ</td><td>NULL</td><td>When it took effect.</td></tr>
+        <tr><td class="col-name">created_at</td><td class="col-type">TIMESTAMPTZ</td><td>NOT NULL</td><td>Authorship time.</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+
+  <div class="schema-card">
+    <header><h3><code>action_requests</code></h3><span class="why">every action the bot ever attempted</span></header>
+    <div class="tbl-scroll"><table>
+      <thead><tr><th>Column</th><th>Type</th><th>Constraints</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td class="col-name">id</td><td class="col-type">TEXT</td><td><span class="pk">PK</span> (ULID)</td><td>What an approval binds to. Approving request #42 authorizes <em>this row</em>, once — not "this kind of action."</td></tr>
+        <tr><td class="col-name">bot_id</td><td class="col-type">TEXT</td><td><span class="fk">FK</span> bots.id, NOT NULL</td><td>Which bot is asking.</td></tr>
+        <tr><td class="col-name">action_type</td><td class="col-type">TEXT</td><td>NOT NULL</td><td>Namespaced kind: <code>db.query</code>, <code>http.post</code>, <code>aps.policy.create</code>&hellip;</td></tr>
+        <tr><td class="col-name">payload</td><td class="col-type">JSONB</td><td>NOT NULL</td><td>The raw, full action parameters. This — not the summary — is what humans approve and matchers inspect.</td></tr>
+        <tr><td class="col-name">summary</td><td class="col-type">TEXT</td><td>NULL</td><td>Bot-provided one-liner. Display-only convenience; never the basis of a decision (bots can spin).</td></tr>
+        <tr><td class="col-name">idempotency_key</td><td class="col-type">TEXT</td><td>UNIQUE(bot_id, idempotency_key)</td><td>SDK retries return the existing request instead of creating a duplicate.</td></tr>
+        <tr><td class="col-name">matched_policy_id</td><td class="col-type">TEXT</td><td><span class="fk">FK</span> policies.id, NULL</td><td>Which policy decided the verdict; NULL when the fail-closed default applied.</td></tr>
+        <tr><td class="col-name">verdict</td><td class="col-type">TEXT</td><td>NOT NULL CHECK IN ('allow','require_approval','deny')</td><td>The engine's answer at evaluation time.</td></tr>
+        <tr><td class="col-name">status</td><td class="col-type">TEXT</td><td>NOT NULL CHECK IN ('auto_allowed','pending','approved','denied','expired','executed','failed')</td><td>Lifecycle — see state machine below.</td></tr>
+        <tr><td class="col-name">decided_by</td><td class="col-type">TEXT</td><td><span class="fk">FK</span> users.id, NULL</td><td>The human who approved/denied. NULL for auto verdicts — the audit answer to "who said yes."</td></tr>
+        <tr><td class="col-name">decided_at</td><td class="col-type">TIMESTAMPTZ</td><td>NULL</td><td>When they decided.</td></tr>
+        <tr><td class="col-name">decision_note</td><td class="col-type">TEXT</td><td>NULL</td><td>Optional human comment ("approved once — write a policy if this recurs").</td></tr>
+        <tr><td class="col-name">ttl_seconds</td><td class="col-type">INTEGER</td><td>NOT NULL DEFAULT 900</td><td>Lifetime the bot requested at submission — default 15 minutes, capped by server config. A longer TTL must be asked for <em>before</em> approval, and is shown to the approver (a request that wants to stay valid for 6 hours is itself information).</td></tr>
+        <tr><td class="col-name">expires_at</td><td class="col-type">TIMESTAMPTZ</td><td>NOT NULL</td><td><code>created_at + ttl_seconds</code>. One deadline bounds the whole lifetime: the human must decide <em>and</em> the bot must execute before it; past it, the sweeper marks the row <code>expired</code>, whether pending or approved.</td></tr>
+        <tr><td class="col-name">executed_at</td><td class="col-type">TIMESTAMPTZ</td><td>NULL</td><td>When the bot reported it actually performed the action — closes the loop, consumes the approval.</td></tr>
+        <tr><td class="col-name">created_at</td><td class="col-type">TIMESTAMPTZ</td><td>NOT NULL</td><td>Submission time.</td></tr>
+      </tbody>
+    </table></div>
+    <div class="statechain" style="margin-top:12px">
+      <span class="pill neutral">submitted</span><span class="sep">&rarr;</span>
+      <span class="pill ok">auto_allowed</span><span class="sep">or</span>
+      <span class="pill warn">pending</span><span class="sep">&rarr;</span>
+      <span class="pill ok">approved</span><span class="sep">/</span>
+      <span class="pill err">denied</span><span class="sep">/</span>
+      <span class="pill neutral">expired</span><span class="sep">; then</span>
+      <span class="pill ok">executed</span><span class="sep">/</span>
+      <span class="pill err">failed</span>
+    </div>
+  </div>
+
+  <div class="schema-card">
+    <header><h3><code>audit_events</code></h3><span class="why">the append-only history — nothing here is ever updated or deleted</span></header>
+    <div class="tbl-scroll"><table>
+      <thead><tr><th>Column</th><th>Type</th><th>Constraints</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td class="col-name">id</td><td class="col-type">BIGINT</td><td><span class="pk">PK</span> GENERATED ALWAYS AS IDENTITY</td><td>Strictly increasing sequence — gaps would betray tampering.</td></tr>
+        <tr><td class="col-name">ts</td><td class="col-type">TIMESTAMPTZ</td><td>NOT NULL</td><td>Event time (UTC).</td></tr>
+        <tr><td class="col-name">actor_kind</td><td class="col-type">TEXT</td><td>NOT NULL CHECK IN ('human','bot','system')</td><td>Who caused it — <code>system</code> covers sweeps like expiry.</td></tr>
+        <tr><td class="col-name">actor_id</td><td class="col-type">TEXT</td><td>NULL</td><td>users.id / bots.id; NULL for system.</td></tr>
+        <tr><td class="col-name">event_type</td><td class="col-type">TEXT</td><td>NOT NULL</td><td>Vocabulary like <code>action.submitted</code>, <code>action.approved</code>, <code>policy.created</code> (human), <code>policy.proposed</code> (bot), <code>policy.activated</code>, <code>policy.disabled</code>, <code>user.login</code>.</td></tr>
+        <tr><td class="col-name">subject_type</td><td class="col-type">TEXT</td><td>NOT NULL</td><td>What it happened to: <code>action_request</code>, <code>policy</code>, <code>bot</code>, <code>user</code>.</td></tr>
+        <tr><td class="col-name">subject_id</td><td class="col-type">TEXT</td><td>NOT NULL</td><td>The row it happened to.</td></tr>
+        <tr><td class="col-name">details</td><td class="col-type">JSONB</td><td>NOT NULL DEFAULT '{}'</td><td>Event-specific context: matched policy + version, verdict, decision note, prior status.</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+
+  <div class="schema-card">
+    <header><h3><code>sessions</code></h3><span class="why">dashboard logins</span></header>
+    <div class="tbl-scroll"><table>
+      <thead><tr><th>Column</th><th>Type</th><th>Constraints</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td class="col-name">token_hash</td><td class="col-type">TEXT</td><td><span class="pk">PK</span></td><td>SHA-256 of the session cookie value.</td></tr>
+        <tr><td class="col-name">user_id</td><td class="col-type">TEXT</td><td><span class="fk">FK</span> users.id, NOT NULL</td><td>Whose session.</td></tr>
+        <tr><td class="col-name">created_at</td><td class="col-type">TIMESTAMPTZ</td><td>NOT NULL</td><td>Login time.</td></tr>
+        <tr><td class="col-name">expires_at</td><td class="col-type">TIMESTAMPTZ</td><td>NOT NULL</td><td>Hard expiry; rows past it are swept.</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+
+  <div class="schema-card">
+    <header><h3><code>system_settings</code></h3><span class="why">runtime switches — including the global kill switch</span></header>
+    <div class="tbl-scroll"><table>
+      <thead><tr><th>Column</th><th>Type</th><th>Constraints</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td class="col-name">key</td><td class="col-type">TEXT</td><td><span class="pk">PK</span></td><td>Setting name. The one that matters most: <code>auto_allow_suspended</code>.</td></tr>
+        <tr><td class="col-name">value</td><td class="col-type">JSONB</td><td>NOT NULL</td><td>Setting value, e.g. <code>true</code>/<code>false</code>, or the default TTL cap.</td></tr>
+        <tr><td class="col-name">updated_by</td><td class="col-type">TEXT</td><td><span class="fk">FK</span> users.id, NULL</td><td>Who flipped it last — kill-switch flips are also audit events.</td></tr>
+        <tr><td class="col-name">updated_at</td><td class="col-type">TIMESTAMPTZ</td><td>NOT NULL</td><td>When.</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+
+  <h3>Relationships at a glance</h3>
+  <div class="tbl-scroll"><table>
+    <thead><tr><th>From</th><th>To</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td class="col-name">action_requests.bot_id</td><td class="col-name">bots.id</td><td>every attempt names its bot</td></tr>
+      <tr><td class="col-name">action_requests.matched_policy_id</td><td class="col-name">policies.id</td><td>why the verdict was what it was</td></tr>
+      <tr><td class="col-name">action_requests.decided_by</td><td class="col-name">users.id</td><td>who said yes (or no)</td></tr>
+      <tr><td class="col-name">policies.authorized_by_policy_id</td><td class="col-name">policies.id</td><td>the recursion chain — which rule allowed this rule</td></tr>
+      <tr><td class="col-name">policies.supersedes_policy_id</td><td class="col-name">policies.id</td><td>version lineage — edits never rewrite history</td></tr>
+      <tr><td class="col-name">policies.approved_by</td><td class="col-name">users.id</td><td>every active policy names its human</td></tr>
+      <tr><td class="col-name">audit_events.(subject_type, subject_id)</td><td class="col-name">any table</td><td>polymorphic pointer from history to the thing</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="flows">
+  <div class="section-head">
+    <p class="eyebrow">06</p>
+    <h2>Key flows</h2>
+  </div>
+
+  <div class="flow">
+    <h4>A — Auto-allowed action <span class="pill ok">allow</span></h4>
+    <ol>
+      <li><span class="actor bot">Bot</span><span>Submits <code>db.query</code> with payload <code>{"sql": "SELECT id FROM orders …"}</code>.</span></li>
+      <li><span class="actor system">Service</span><span>Policy "db-reads-auto" (regex <code>^\s*SELECT</code>) matches with effect <b>allow</b>; no deny or require_approval rule fires. Request stored as <code>auto_allowed</code>, audit event written with policy id + version.</span></li>
+      <li><span class="actor bot">Bot</span><span>Receives <b>allow</b> in the same round-trip, executes the query, reports <code>executed</code>.</span></li>
+    </ol>
+  </div>
+
+  <div class="flow">
+    <h4>B — Human approval <span class="pill warn">pending</span> &rarr; <span class="pill ok">approved</span></h4>
+    <ol>
+      <li><span class="actor bot">Bot</span><span>Submits <code>http.post</code> to a payments API. No policy allows it — verdict <b>require_approval</b>, status <code>pending</code>, <code>expires_at</code> set from the requested TTL (default 15 min; the bot may ask for longer up front). SDK starts polling.</span></li>
+      <li><span class="actor human">Human</span><span>Alice sees it in the queue — full payload, not just the bot's summary — and clicks Approve.</span></li>
+      <li><span class="actor system">Service</span><span>Atomic transition to <code>approved</code>, <code>decided_by = alice</code>; audit event written.</span></li>
+      <li><span class="actor bot">Bot</span><span>Next poll returns <b>approved</b>; bot performs the POST exactly once and reports <code>executed</code> — the approval is now consumed. Doing it again means a brand-new request.</span></li>
+    </ol>
+  </div>
+
+  <div class="flow">
+    <h4>C — Nobody answers <span class="pill warn">pending</span> &rarr; <span class="pill neutral">expired</span></h4>
+    <ol>
+      <li><span class="actor bot">Bot</span><span>Submits an action; goes <code>pending</code>.</span></li>
+      <li><span class="actor system">Service</span><span>15 minutes pass. The expiry sweeper marks the request <code>expired</code>; audit event written by actor <code>system</code>.</span></li>
+      <li><span class="actor bot">Bot</span><span>Poll returns <b>expired</b> — treated exactly like a deny. Fail closed.</span></li>
+    </ol>
+  </div>
+
+  <div class="flow">
+    <h4>D — Two approvers race <span class="pill neutral">first decision wins</span></h4>
+    <ol>
+      <li><span class="actor human">Human</span><span>Alice and Bob both have request #42 open.</span></li>
+      <li><span class="actor system">Service</span><span>Alice's Approve lands first: <code>UPDATE action_requests SET status='approved', decided_by='alice' WHERE id=42 AND status='pending'</code> — one row affected.</span></li>
+      <li><span class="actor system">Service</span><span>Bob's click runs the same statement a moment later — <em>zero</em> rows affected, because status is no longer <code>pending</code>. His API call returns 409: "already decided by Alice at 14:02."</span></li>
+      <li><span class="actor human">Human</span><span>Bob's dashboard shows the existing decision. No second approval is ever recorded — the guard is the state machine itself, not UI politeness.</span></li>
+    </ol>
+  </div>
+</section>
+
+<section id="recursion">
+  <div class="section-head">
+    <p class="eyebrow">07</p>
+    <h2>Policy recursion — the bot proposing its own rules</h2>
+  </div>
+  <p>The elegant trick: <b>creating a policy is itself just an action</b>, with type <code>aps.policy.create</code>, flowing through the same engine, queue, and audit trail as everything else. No second approval system exists.</p>
+  <div class="flow">
+    <h4>E — Bot proposes a policy</h4>
+    <ol>
+      <li><span class="actor bot">Bot</span><span>Has been asking humans to approve <code>SELECT</code>s all day. Submits action <code>aps.policy.create</code> whose payload <em>is</em> the proposed policy: "db.query matching <code>^\s*SELECT</code> &rarr; allow".</span></li>
+      <li><span class="actor system">Service</span><span>By default no policy covers <code>aps.policy.create</code>, so it lands in the human queue like anything else. A policy row is stored as <code>pending_approval</code>.</span></li>
+      <li><span class="actor human">Human</span><span>Reviews the <em>rendered rule</em> — what it would allow, what it wouldn't — and approves. Policy becomes <code>active</code>, <code>approved_by</code> set, depth = 1.</span></li>
+      <li><span class="actor bot">Bot</span><span>From now on, SELECTs sail through. The audit trail shows the whole story: who approved the rule, and every action the rule later allowed.</span></li>
+    </ol>
+  </div>
+  <p><b>One rule is hard-coded: <code>aps.policy.create</code> can never be auto-allowed.</b> The engine rejects any policy whose effect would be <code>allow</code> for policy creation — so every bot-proposed rule passes a human, always, no matter what policies exist. What a bot policy <em>can</em> grant is the right to <em>propose</em> further policies; each proposal records which policy authorized it (<code>authorized_by_policy_id</code>) and its <code>depth</code> — parent depth + 1, humans are depth 0. Creation past the configured limit (default <b>3</b>) is rejected outright. Revoking a policy in the chain disables its descendants with it.</p>
+  <div class="callout">
+    <b>Why this closes the scope problem.</b> A depth counter limits chain <em>length</em>, not <em>breadth</em> — the scary scenario was a bot-authored rule far broader than intended slipping into effect. With human approval mandatory for every bot policy, breadth is always human-reviewed. Formal "child must be narrower than parent" verification only becomes necessary if this invariant is ever relaxed (see resolved question №4).
+  </div>
+</section>
+
+<section id="choices">
+  <div class="section-head">
+    <p class="eyebrow">08</p>
+    <h2>Decision log</h2>
+  </div>
+  <div class="tbl-scroll"><table>
+    <thead><tr><th>Decision</th><th>Choice</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td>Stack</td><td>Go backend, Svelte dashboard, PostgreSQL</td><td>Real database from day one (concurrency, JSONB, row locking); self-hosting is one <code>docker compose up</code>, UI embedded via <code>embed.FS</code>.</td></tr>
+      <tr><td>Enforcement</td><td>Bot asks first (decision API + SDK)</td><td>Generic over any action type; the service judges descriptions, never wire protocols. Trusts the bot's harness code — a proxy could be layered on later for hard guarantees.</td></tr>
+      <tr><td>Default posture</td><td>Everything requires approval until a policy allows it</td><td>Fail-closed from the first request; policies are carve-outs, not gates bolted on.</td></tr>
+      <tr><td>Waiting bot</td><td>Block &amp; poll with timeout; webhook endpoint reserved</td><td>Trivial to integrate into any bot; async resume is an upgrade, not a rework.</td></tr>
+      <tr><td>Approvals</td><td>Single-use, bound to one request id</td><td>Makes "no approving the same thing twice" structural; repeatability = propose a policy.</td></tr>
+      <tr><td>Approval TTL</td><td>Every request expires: 15-minute default, bot may request longer <em>before</em> approval, server-capped</td><td>Bounds both deciding and executing with one deadline; a stale approval can never fire hours later, and an unusual TTL is visible to the approver.</td></tr>
+      <tr><td>Matching</td><td>exact/regex in v1 behind a <code>Matcher</code> interface; LLM judge next</td><td>v1 stays deterministic and key-free; schema already admits <code>llm</code>.</td></tr>
+      <tr><td>Precedence</td><td>deny &gt; require_approval &gt; allow; no match &rarr; approval</td><td>An allow rule can never accidentally shadow a deny.</td></tr>
+      <tr><td>Users</td><td>A few equal humans, individual logins, first decision wins</td><td>Attribution needs real identities; role tiers wait, but the <code>role</code> column doesn't.</td></tr>
+      <tr><td>Kill switch</td><td>Per-bot deny-all (<code>disabled_at</code>) + global <code>auto_allow_suspended</code> toggle</td><td>Two blast radii: silence one bot, or put a human back in front of everything — without editing or losing any policies.</td></tr>
+      <tr><td>Human policies</td><td>Created directly via dashboard/API, active immediately, author recorded as approver</td><td>Humans are the root of authority (depth 0); flat-role v1 needs no self-approval ceremony — but <code>policy.created</code> and <code>policy.activated</code> are audit-logged like everything else. Role tiers could later require a second reviewer.</td></tr>
+      <tr><td>Bot policies</td><td>Policy creation is an action (<code>aps.policy.create</code>) that can <b>never</b> be auto-allowed — a human approves every bot policy; depth-limited provenance chain</td><td>One approval pipeline for everything; recursion is capped, fully auditable, and breadth is always human-reviewed (resolves the scope-monotonicity risk).</td></tr>
+      <tr><td>Policy edits</td><td>Immutable versions via <code>supersedes_policy_id</code></td><td>The audit trail can always name the exact rule text that made a decision.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="open">
+  <div class="section-head">
+    <p class="eyebrow">09</p>
+    <h2>Open questions — ranked by how much they'd bend the architecture</h2>
+  </div>
+  <div class="tbl-scroll"><table>
+    <thead><tr><th class="num">№</th><th>Impact</th><th>Question</th><th>Current lean</th></tr></thead>
+    <tbody>
+      <tr><td class="num">1</td><td><span class="impact high">High</span></td><td><b>Summary spoofing.</b> The bot writes its own <code>summary</code>. If humans approve from the summary, the bot controls what they think they approved.</td><td>Queue UI always renders the raw payload; summary is a visually-secondary caption. This is a UI-contract, decided now — <b>no LLM required</b>: the defense is deterministic (show the real payload, pretty-printed per action type). A service-side LLM summarizer could be a later convenience, but never the basis of a decision, since a summarizer can itself be steered by adversarial payload content.</td></tr>
+      <tr><td class="num">2</td><td><span class="pill ok">Resolved</span></td><td><b>Approved-but-never-executed.</b> Bot gets approval, crashes, retries an hour later. Is the approval still good?</td><td><b>Resolved:</b> every request carries a TTL — default 15 minutes, longer only if the bot asked before approval (<code>ttl_seconds</code>, server-capped, shown to the approver). One <code>expires_at</code> deadline bounds both the decision and the execution; an unconsumed approval expires with it.</td></tr>
+      <tr><td class="num">3</td><td><span class="pill neutral">Deferred</span></td><td><b>Payload sensitivity.</b> Payloads (and the audit log) will contain real SQL, tokens, customer data. Retention? Redaction? Who can read the audit trail?</td><td><b>Deferred — demo scope.</b> Everything is stored as-is, dashboard behind login. Revisit (retention, redaction, audit-read access) before pointing this at any real data.</td></tr>
+      <tr><td class="num">4</td><td><span class="pill ok">Resolved</span></td><td><b>Scope monotonicity for bot policies.</b> Depth limits chain <em>length</em>, not <em>breadth</em> — a bot-authored rule could still be far broader than intended.</td><td><b>Resolved:</b> every bot-created policy requires human approval — the engine refuses any policy that would auto-allow <code>aps.policy.create</code>, so no meta-policy can bypass review. Breadth is therefore always human-checked; formal "child narrower than parent" verification is only needed if that invariant is ever relaxed.</td></tr>
+      <tr><td class="num">5</td><td><span class="pill ok">Resolved</span></td><td><b>Kill switch.</b> When the bot misbehaves, what's the one-click "stop everything"?</td><td><b>Resolved:</b> two levels, both in v1. Per-bot: <code>disabled_at</code> ⇒ deny-all before any policy runs (<code>POST /v1/bots/:id/disable</code>). Global: <code>auto_allow_suspended</code> in <code>system_settings</code> downgrades every allow to require_approval (<code>PUT /v1/system/auto-allow</code>). Both one click in the dashboard, both audit-logged.</td></tr>
+      <tr><td class="num">6</td><td><span class="impact med">Med</span></td><td><b>Notifications.</b> Humans won't sit watching a queue; a 15-minute expiry assumes they hear about requests fast.</td><td>V1 is dashboard-only (plus browser notifications, maybe). Slack/email webhooks are v1.x — same reserved webhook surface as bot callbacks.</td></tr>
+      <tr><td class="num">7</td><td><span class="impact med">Med</span></td><td><b>Pending-flood rate limiting.</b> A looping bot could bury the queue in hundreds of requests.</td><td>Cap concurrent pendings per bot (e.g. 20); beyond it, submissions get 429. Idempotency keys already stop accidental duplicates.</td></tr>
+      <tr><td class="num">8</td><td><span class="impact med">Med</span></td><td><b>LLM matcher semantics.</b> Non-deterministic verdicts, per-check cost, and "what did the model see?" auditability.</td><td>Designed-in: fail-closed on unreachable/uncertain, rationale stored in <code>audit_events.details</code>, only ever <em>narrowing</em> (allowed to say "ask a human", never to override a deny).</td></tr>
+      <tr><td class="num">9</td><td><span class="impact med">Med</span></td><td><b>Multi-instance / scale-out.</b> The in-process expiry sweeper assumes a single service node.</td><td>Postgres already supports multiple nodes; when scaling out, the sweeper needs a leader lock (<code>pg_advisory_lock</code>) so only one instance sweeps.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="repo">
+  <div class="section-head">
+    <p class="eyebrow">10</p>
+    <h2>Proposed repo layout</h2>
+  </div>
+<pre><code>action-permission-system/
+├── cmd/aps/            # main: serves API + embedded dashboard
+├── internal/
+│   ├── api/            # HTTP handlers, request/response types
+│   ├── engine/         # policy evaluation, Matcher interface (exact, regex; llm later)
+│   ├── store/          # Postgres access (pgx), migrations, the only SQL in the codebase
+│   └── auth/           # user sessions, bot API keys
+├── web/                # Svelte dashboard (built output embedded via embed.FS)
+├── sdk/go/             # bot-side client: Check(action) → allow/deny/blocked-poll
+├── docs/
+│   └── architecture.html   # this document
+├── docker-compose.yml  # app + postgres
+└── README.md           # self-hosting setup: docker compose up
+</code></pre>
+</section>
+
+<section id="mvp">
+  <div class="section-head">
+    <p class="eyebrow">11</p>
+    <h2>MVP cut</h2>
+    <p class="lede" style="font-size:0.95rem">The smallest build that demos the pitch end-to-end: <em>the bot asked, a human said yes exactly once, and there's a log proving it.</em> Four milestones, each independently demoable.</p>
+  </div>
+  <div class="tbl-scroll"><table>
+    <thead><tr><th class="num">#</th><th>Milestone</th><th>Scope</th><th>Demoable moment</th></tr></thead>
+    <tbody>
+      <tr><td class="num">0</td><td><b>Skeleton</b></td><td>Repo scaffold; <code>docker compose up</code> (Go + Postgres); migrations create <b>all seven tables</b> up front — schema is cheap now, painful to retrofit.</td><td>Service boots, health check passes, empty dashboard serves.</td></tr>
+      <tr><td class="num">1</td><td><b>Decision loop (no UI)</b></td><td><code>POST /v1/actions</code>; engine with exact + regex matchers and candidate-key lookup; fail-closed default; polling; TTL expiry sweep; decision endpoint; audit events on every transition.</td><td>Two <code>curl</code> windows: one plays the bot, one plays the human. The product's soul works.</td></tr>
+      <tr><td class="num">2</td><td><b>Dashboard</b></td><td>Login; approval queue rendering the raw payload (summary as caption); approve/deny; audit browser; kill switches (per-bot disable + global suspend — both nearly free and demo well).</td><td>Human clicks instead of curls; two racing browser windows show first-decision-wins.</td></tr>
+      <tr><td class="num">3</td><td><b>Policies, both directions</b></td><td>Human policy editor (create/disable); bot proposals via <code>aps.policy.create</code> through the same queue; proposal review screen.</td><td>Bot's SELECTs go pending → bot proposes "reads auto-allow" → human approves → next SELECT sails through. The recursion story, live.</td></tr>
+      <tr><td class="num">4</td><td><b>Demo bot + README</b></td><td>Tiny Go example bot using the SDK against a toy target; self-hosting README.</td><td>A stranger can <code>docker compose up</code> and reproduce the whole story.</td></tr>
+    </tbody>
+  </table></div>
+  <p><b>Deliberately deferred</b> (designed slots exist; none block the demo): LLM matcher, webhooks/notifications, idempotency keys, rate limiting, role tiers, policy versioning UI (MVP edits = disable + recreate; <code>supersedes_policy_id</code> sits unused), multi-node.</p>
+</section>
+
+<footer class="docfoot">
+  Action Permission System — architecture v0.1 · design phase, no code yet · July 2026
+</footer>
+
+</div>
+</body>
+</html>

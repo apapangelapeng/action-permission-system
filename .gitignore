@@ -1,0 +1,3 @@
+# web/dist is committed on purpose: the Go binary embeds it (web/embed.go)
+web/node_modules/
+.DS_Store
