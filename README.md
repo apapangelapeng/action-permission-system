@@ -19,8 +19,9 @@ to re-seed).
 
 The dashboard has five screens: **Queue** (pending requests with the raw
 payload front and center — the bot's summary is shown as an unverified
-caption), **Activity** (every request and its outcome), **Policies**
-(read-only until milestone 3), **Audit** (the append-only trail), and
+caption; policy proposals render as human-readable rules), **Activity**
+(every request and its outcome), **Policies** (create and disable rules;
+yours take effect immediately), **Audit** (the append-only trail), and
 **Controls** (both kill switches: disable a bot, or suspend all auto-allow).
 Approvals are first-decision-wins: open two browser windows as alice and bob,
 decide the same request in both, and the loser gets told who beat them.
@@ -75,6 +76,28 @@ front, capped by `max_ttl_seconds`). Approvals are single-use. Disabled bots
 get deny-all; setting `auto_allow_suspended` to `true` in `system_settings`
 sends every action back to a human.
 
+### The bot can propose its own rules
+
+Policy creation is just another action. The bot submits `aps.policy.create`
+with the proposed rule as its payload; it lands in the human queue like
+everything else (a hard invariant refuses any policy that would auto-allow
+`aps.policy.create` — every proposal passes a human). Approving the request
+activates the rule; denying rejects it; letting it expire rejects it too.
+Disabling a policy cascades to any bot policies it authorized.
+
+```sh
+curl -s -X POST localhost:8080/v1/actions -H "X-API-Key: $KEY" -H 'Content-Type: application/json' -d '{
+  "type": "aps.policy.create",
+  "payload": {
+    "name": "db-reads-auto", "description": "SELECTs are read-only",
+    "action_type_pattern": "db.query",
+    "matcher_type": "regex", "matcher_config": {"field": "sql", "pattern": "(?i)^\\s*SELECT"},
+    "effect": "allow"
+  },
+  "summary": "proposal: stop asking me about reads"
+}'
+```
+
 ## Development
 
 ```sh
@@ -101,7 +124,7 @@ docs/               architecture doc
 
 ## Status
 
-Milestone 2 of the [MVP plan](docs/architecture.html#mvp): the decision loop
-(milestone 1) plus the dashboard — login, approval queue, activity, audit
-browser, and kill-switch controls. Milestone 3 (policy creation, human and
-bot) is next.
+Milestone 3 of the [MVP plan](docs/architecture.html#mvp): decision loop,
+dashboard, and policy creation in both directions — humans edit rules in the
+dashboard; bots propose rules through the same approval queue as everything
+else. Milestone 4 (example bot + SDK) is next.

@@ -237,27 +237,35 @@ func (s *Store) MarkExecuted(ctx context.Context, id, botID string, success bool
 	return ar, false, err
 }
 
+// ExpiredRequest is what the sweeper needs to follow up on an expiry —
+// enough to reject the linked policy when a proposal timed out.
+type ExpiredRequest struct {
+	ID         string
+	ActionType string
+	Payload    map[string]any
+}
+
 // ExpireOverdue fails closed on time: pending requests nobody answered and
 // approvals the bot never consumed both become 'expired'.
-func (s *Store) ExpireOverdue(ctx context.Context) ([]string, error) {
+func (s *Store) ExpireOverdue(ctx context.Context) ([]ExpiredRequest, error) {
 	rows, err := s.pool.Query(ctx,
 		`UPDATE action_requests SET status = 'expired'
 		 WHERE status IN ('pending', 'approved') AND expires_at <= now()
-		 RETURNING id`)
+		 RETURNING id, action_type, payload`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var ids []string
+	var out []ExpiredRequest
 	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
+		var e ExpiredRequest
+		if err := rows.Scan(&e.ID, &e.ActionType, &e.Payload); err != nil {
 			return nil, err
 		}
-		ids = append(ids, id)
+		out = append(out, e)
 	}
-	return ids, rows.Err()
+	return out, rows.Err()
 }
 
 // ── audit ───────────────────────────────────────────────────────────────────

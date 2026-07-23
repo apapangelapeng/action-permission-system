@@ -125,6 +125,16 @@ func (h *handlers) submitAction(w http.ResponseWriter, r *http.Request) {
 	maxTTL := h.st.IntSetting(ctx, "max_ttl_seconds", 21600)
 	ttl = min(max(ttl, minTTLSeconds), maxTTL)
 
+	// A policy proposal stores its pending policy row up front; the human
+	// decision on this action activates or rejects it.
+	if req.Type == engine.PolicyCreateActionType && !bot.Disabled {
+		policyID, ok := h.preparePolicyProposal(w, r, bot, req.Payload)
+		if !ok {
+			return
+		}
+		req.Payload["policy_id"] = policyID
+	}
+
 	ar := &store.ActionRequest{
 		ID:         store.NewID("act"),
 		BotID:      bot.ID,
@@ -180,6 +190,17 @@ func (h *handlers) submitAction(w http.ResponseWriter, r *http.Request) {
 	h.st.Audit(ctx, "bot", &bot.ID, "action.submitted", "action_request", ar.ID,
 		map[string]any{"type": ar.ActionType, "ttl_seconds": ar.TTLSeconds})
 	h.st.Audit(ctx, "system", nil, "action."+verdictEvent(ar.Status), "action_request", ar.ID, details)
+
+	// A proposal denied by policy (e.g. an explicit deny on aps.policy.*)
+	// never reaches a human — reject its pending policy row too.
+	if ar.ActionType == engine.PolicyCreateActionType && ar.Status == "denied" {
+		if id := str(ar.Payload["policy_id"]); id != "" {
+			if ok, _ := h.st.RejectPolicy(ctx, id); ok {
+				h.st.Audit(ctx, "system", nil, "policy.rejected", "policy", id,
+					map[string]any{"via_action": ar.ID, "reason": "proposal denied by policy"})
+			}
+		}
+	}
 
 	writeJSON(w, http.StatusCreated, ar)
 }
@@ -265,6 +286,11 @@ func (h *handlers) decideAction(w http.ResponseWriter, r *http.Request) {
 		details["note"] = *req.Note
 	}
 	h.st.Audit(r.Context(), "human", &user.ID, event, "action_request", ar.ID, details)
+
+	if ar.ActionType == engine.PolicyCreateActionType {
+		h.applyPolicyDecision(r.Context(), ar, user, newStatus == "approved")
+	}
+
 	writeJSON(w, http.StatusOK, ar)
 }
 
@@ -321,16 +347,25 @@ func RunExpirySweeper(ctx context.Context, st *store.Store, interval time.Durati
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			ids, err := st.ExpireOverdue(ctx)
+			expired, err := st.ExpireOverdue(ctx)
 			if err != nil {
 				log.Printf("expiry sweep failed: %v", err)
 				continue
 			}
-			for _, id := range ids {
-				st.Audit(ctx, "system", nil, "action.expired", "action_request", id, nil)
+			for _, e := range expired {
+				st.Audit(ctx, "system", nil, "action.expired", "action_request", e.ID, nil)
+				// A proposal nobody reviewed in time is rejected with it.
+				if e.ActionType == engine.PolicyCreateActionType {
+					if id, _ := e.Payload["policy_id"].(string); id != "" {
+						if ok, _ := st.RejectPolicy(ctx, id); ok {
+							st.Audit(ctx, "system", nil, "policy.rejected", "policy", id,
+								map[string]any{"via_action": e.ID, "reason": "proposal expired"})
+						}
+					}
+				}
 			}
-			if len(ids) > 0 {
-				log.Printf("expired %d overdue request(s)", len(ids))
+			if len(expired) > 0 {
+				log.Printf("expired %d overdue request(s)", len(expired))
 			}
 		}
 	}

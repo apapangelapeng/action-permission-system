@@ -56,6 +56,9 @@
   function policyName(id) {
     return id ? dir.policies[id] || id : null
   }
+
+  const isProposal = (item) => item.action_type === 'aps.policy.create'
+  const effectPill = { allow: 'ok', require_approval: 'warn', deny: 'err' }
 </script>
 
 <div class="stack">
@@ -89,7 +92,31 @@
       {#if item.summary}
         <p class="summary small muted">Bot says: “{item.summary}” — unverified; judge the payload below.</p>
       {/if}
-      <pre class="payload">{JSON.stringify(item.payload, null, 2)}</pre>
+
+      {#if isProposal(item)}
+        <div class="proposal">
+          <div class="row">
+            <span class="pill warn">policy proposal</span>
+            <b>{item.payload.name}</b>
+          </div>
+          {#if item.payload.description}<p class="small muted">{item.payload.description}</p>{/if}
+          <p class="rule">
+            When <code>{item.payload.action_type_pattern}</code> matches
+            <code>{item.payload.matcher_type}</code>
+            <span class="mono small">{JSON.stringify(item.payload.matcher_config)}</span>
+            → <span class="pill {effectPill[item.payload.effect] || 'neutral'}">{item.payload.effect}</span>
+          </p>
+          <p class="small muted">
+            Approving this request activates the rule; future matching actions
+            {item.payload.effect === 'allow' ? 'will run without asking a human' : `will get “${item.payload.effect}”`}.
+          </p>
+          <details><summary class="small muted">raw payload</summary>
+            <pre class="payload">{JSON.stringify(item.payload, null, 2)}</pre>
+          </details>
+        </div>
+      {:else}
+        <pre class="payload">{JSON.stringify(item.payload, null, 2)}</pre>
+      {/if}
 
       <div class="row">
         <input
@@ -110,6 +137,9 @@
 
 <style>
   .type { font-size: 0.9rem; font-weight: 600; }
+  .proposal { border: 1px dashed var(--warn); border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+  .proposal p { margin: 0; }
+  .rule { line-height: 1.9; }
   .summary { margin: 0; font-style: italic; }
   .banner { border-color: var(--warn); color: var(--warn); }
   .note { flex: 1; min-width: 200px; }
