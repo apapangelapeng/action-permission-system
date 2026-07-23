@@ -44,6 +44,44 @@ Password resets are a SQL one-liner by design (pgcrypto):
 UPDATE users SET password_hash = crypt('new-password', gen_salt('bf')) WHERE username = 'alice';
 ```
 
+## The five-minute demo
+
+1. `docker compose up --build`, then open <http://localhost:8080> and sign in
+   as `alice` / `password123` (keep the Queue tab visible).
+2. In another terminal: `go run ./cmd/demo-bot`
+3. The bot narrates its way through the whole product: reads sail through on
+   a policy, `DROP TABLE` bounces off the deny rule, a payment fix appears in
+   your Queue and waits for your click, and when asking gets old the bot
+   proposes its own rule — which also lands in your Queue, rendered as a
+   human-readable policy. Approve it and watch the bot's next call go through
+   without asking. Everything lands in the Audit tab.
+
+For the race demo, open a second window as `bob` and have both users decide
+the same request — the second click is told who got there first.
+
+## Using the SDK in your own bot
+
+```go
+import aps "github.com/apapangelapeng/action-permission-system/sdk/go"
+
+client := aps.New("http://localhost:8080", os.Getenv("APS_BOT_KEY"))
+
+req, err := client.Check(ctx, aps.Action{
+    Type:    "db.query",
+    Payload: map[string]any{"sql": query}, // the full truth — this is what humans see
+    Summary: "refresh the sales report",   // display-only caption
+})
+if err != nil { ... }
+if req.Allowed() {
+    runQuery(query)                                  // do the real work
+    client.ReportExecuted(ctx, req.ID, true, "")     // consume the single-use approval
+}
+```
+
+`Check` blocks while a human decides (a gated action just looks slow to the
+bot); `ProposePolicy` submits a rule through the same approval queue. The HTTP
+contract is two endpoints, so any language can integrate without the SDK.
+
 ## Try the decision loop (curl)
 
 ```sh
@@ -113,18 +151,20 @@ npm run build                     # regenerates web/dist (committed; embedded in
 
 ```
 cmd/aps/            main: serves API + embedded dashboard
+cmd/demo-bot/       narrated example bot built on the SDK
 internal/api/       HTTP handlers
-internal/engine/    policy evaluation (milestone 1)
+internal/engine/    policy evaluation: candidate-key lookup, matchers, precedence
 internal/store/     postgres access, migrations, seed — the only SQL in the codebase
-internal/auth/      user sessions + bot API keys (milestones 1–2)
+internal/auth/      credential hashing, session tokens
 web/                Svelte dashboard; built output in web/dist is embedded
-sdk/go/             bot-side SDK (milestone 4)
+sdk/go/             bot-side SDK: Check, ReportExecuted, ProposePolicy
 docs/               architecture doc
 ```
 
 ## Status
 
-Milestone 3 of the [MVP plan](docs/architecture.html#mvp): decision loop,
-dashboard, and policy creation in both directions — humans edit rules in the
-dashboard; bots propose rules through the same approval queue as everything
-else. Milestone 4 (example bot + SDK) is next.
+MVP complete — all five milestones of the [plan](docs/architecture.html#mvp):
+decision loop, dashboard, policy creation in both directions, SDK, and the
+demo bot. Designed-but-deferred: LLM judge matcher, webhooks/notifications,
+idempotency keys, rate limiting, role tiers, policy versioning UI (see the
+architecture doc's open-questions section).
