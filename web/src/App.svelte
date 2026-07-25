@@ -50,10 +50,19 @@
 
   $effect(() => {
     if (!user) return
+    tab // re-run on tab switch so names minted mid-session resolve everywhere
     loadDirectory()
+  })
+
+  $effect(() => {
+    if (!user) return
     pollPending()
     const t = setInterval(pollPending, 4000)
-    return () => clearInterval(t)
+    const d = setInterval(loadDirectory, 30000)
+    return () => {
+      clearInterval(t)
+      clearInterval(d)
+    }
   })
 
   const ActiveView = $derived(tabs.find((t) => t.id === tab)?.component || Queue)
