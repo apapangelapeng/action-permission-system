@@ -387,7 +387,8 @@
       <h3>Svelte dashboard</h3>
       <ul>
         <li><b>Approval queue</b> — pending requests, oldest/most-urgent first. Shows the <em>raw payload</em>, not just the bot's summary (see summary-spoofing, <a href="#open">open questions</a>).</li>
-        <li><b>Policy editor</b> — humans create, version, and disable policies directly (no queue for their own rules); every change is audit-logged with its author.</li>
+        <li><b>Policy editor</b> — humans create, disable, and re-enable policies directly (no queue for their own rules), choosing global or per-bot scope; every change is audit-logged with its author.</li>
+        <li><b>Bot minting</b> — Controls creates bot identities and shows each API key exactly once.</li>
         <li><b>Policy review</b> — bot-proposed policies rendered human-readably, with a diff against what the bot could already do.</li>
         <li><b>Audit browser</b> — filterable timeline: what the bot tried, which policy decided, who said yes.</li>
         <li><b>Kill switches</b> — disable a misbehaving bot (deny-all) or suspend all auto-allow system-wide, each one click and audit-logged.</li>
@@ -411,11 +412,12 @@
         <li><code>POST /v1/actions/:id/executed</code> — bot reports outcome</li>
         <li><code>POST /v1/actions/:id/decision</code> — human approves/denies</li>
         <li><code>GET /v1/policies</code> — list policies with status + version lineage</li>
-        <li><code>POST /v1/policies</code> — create a policy. Session-authenticated humans activate immediately (author = approver, depth 0); API-key bots enter the approval queue. Both paths are audit-logged.</li>
+        <li><code>POST /v1/policies</code> — create a policy, global or scoped to one bot (<code>bot_id</code>). Session-authenticated humans activate immediately (author = approver, depth 0); API-key bots enter the approval queue, always scoped to themselves. Duplicates are refused: an equivalent same-scope rule (pattern + matcher + effect, name ignored) or a reused live name gets a 409, audit-logged.</li>
         <li><code>POST /v1/policies/:id/decision</code> — human approves/rejects a bot proposal</li>
         <li><code>POST /v1/policies/:id/versions</code> — edit = create a successor version (immutable lineage)</li>
-        <li><code>POST /v1/policies/:id/disable</code> — retire a policy and its bot-made descendants</li>
-        <li><code>POST /v1/bots/:id/disable</code> — per-bot kill switch: deny-all, instantly</li>
+        <li><code>POST /v1/policies/:id/disable</code> — retire a policy and its bot-made descendants; <code>…/enable</code> re-activates (the enabler becomes approver of record; no cascade)</li>
+        <li><code>POST /v1/bots</code> — mint a bot identity; the API key is returned exactly once, only its hash stored. One key = one bot; unknown keys are 401 — identities are human-minted, never self-registered.</li>
+        <li><code>POST /v1/bots/:id/disable</code> — per-bot kill switch: deny-all, instantly (<code>…/enable</code> reverses)</li>
         <li><code>PUT /v1/system/auto-allow</code> — global kill switch: suspend/restore all auto-allow</li>
         <li><code>GET /v1/audit</code> — filterable event stream</li>
         <li><code>POST /v1/webhooks</code> — reserved for v1.x</li>
@@ -719,7 +721,7 @@
       <tr><td class="num">3</td><td><span class="pill neutral">Deferred</span></td><td><b>Payload sensitivity.</b> Payloads (and the audit log) will contain real SQL, tokens, customer data. Retention? Redaction? Who can read the audit trail?</td><td><b>Deferred — demo scope.</b> Everything is stored as-is, dashboard behind login. Revisit (retention, redaction, audit-read access) before pointing this at any real data.</td></tr>
       <tr><td class="num">4</td><td><span class="pill ok">Resolved</span></td><td><b>Scope monotonicity for bot policies.</b> Depth limits chain <em>length</em>, not <em>breadth</em> — a bot-authored rule could still be far broader than intended.</td><td><b>Resolved:</b> every bot-created policy requires human approval — the engine refuses any policy that would auto-allow <code>aps.policy.create</code>, so no meta-policy can bypass review. Breadth is therefore always human-checked; formal "child narrower than parent" verification is only needed if that invariant is ever relaxed.</td></tr>
       <tr><td class="num">5</td><td><span class="pill ok">Resolved</span></td><td><b>Kill switch.</b> When the bot misbehaves, what's the one-click "stop everything"?</td><td><b>Resolved:</b> two levels, both in v1. Per-bot: <code>disabled_at</code> ⇒ deny-all before any policy runs (<code>POST /v1/bots/:id/disable</code>). Global: <code>auto_allow_suspended</code> in <code>system_settings</code> downgrades every allow to require_approval (<code>PUT /v1/system/auto-allow</code>). Both one click in the dashboard, both audit-logged.</td></tr>
-      <tr><td class="num">6</td><td><span class="impact med">Med</span></td><td><b>Notifications.</b> Humans won't sit watching a queue; a 15-minute expiry assumes they hear about requests fast.</td><td>V1 is dashboard-only (plus browser notifications, maybe). Slack/email webhooks are v1.x — same reserved webhook surface as bot callbacks.</td></tr>
+      <tr><td class="num">6</td><td><span class="impact med">Med</span></td><td><b>Notifications.</b> Humans won't sit watching a queue; a 15-minute expiry assumes they hear about requests fast.</td><td>Today the dashboard polls (deduped; pauses in hidden tabs) — fine at demo scale. The upgrade is push: SSE/websocket fed by in-process events or Postgres LISTEN/NOTIFY, then Slack/email webhooks on the same reserved surface.</td></tr>
       <tr><td class="num">7</td><td><span class="impact med">Med</span></td><td><b>Pending-flood rate limiting.</b> A looping bot could bury the queue in hundreds of requests.</td><td>Cap concurrent pendings per bot (e.g. 20); beyond it, submissions get 429. Idempotency keys already stop accidental duplicates.</td></tr>
       <tr><td class="num">8</td><td><span class="impact med">Med</span></td><td><b>LLM matcher semantics.</b> Non-deterministic verdicts, per-check cost, and "what did the model see?" auditability.</td><td>Designed-in: fail-closed on unreachable/uncertain, rationale stored in <code>audit_events.details</code>, only ever <em>narrowing</em> (allowed to say "ask a human", never to override a deny).</td></tr>
       <tr><td class="num">9</td><td><span class="impact med">Med</span></td><td><b>Multi-instance / scale-out.</b> The in-process expiry sweeper assumes a single service node.</td><td>Postgres already supports multiple nodes; when scaling out, the sweeper needs a leader lock (<code>pg_advisory_lock</code>) so only one instance sweeps.</td></tr>
@@ -734,6 +736,8 @@
   </div>
 <pre><code>action-permission-system/
 ├── cmd/aps/            # main: serves API + embedded dashboard
+├── cmd/demo-bot/       # narrated example bot built on the SDK
+├── scripts/            # test-bot.sh: hand-drive both roles from the terminal
 ├── internal/
 │   ├── api/            # HTTP handlers, request/response types
 │   ├── engine/         # policy evaluation, Matcher interface (exact, regex; llm later)
@@ -752,7 +756,7 @@
   <div class="section-head">
     <p class="eyebrow">11</p>
     <h2>MVP cut</h2>
-    <p class="lede" style="font-size:0.95rem">The smallest build that demos the pitch end-to-end: <em>the bot asked, a human said yes exactly once, and there's a log proving it.</em> Four milestones, each independently demoable.</p>
+    <p class="lede" style="font-size:0.95rem"><b>All milestones shipped.</b> The plan that got there — the smallest build that demos the pitch end-to-end: <em>the bot asked, a human said yes exactly once, and there's a log proving it.</em> Shipped since: bot-scoped policies with tiered precedence, duplicate refusal, bot minting, policy enable, and dashboard polling that dedupes and pauses in hidden tabs.</p>
   </div>
   <div class="tbl-scroll"><table>
     <thead><tr><th class="num">#</th><th>Milestone</th><th>Scope</th><th>Demoable moment</th></tr></thead>
