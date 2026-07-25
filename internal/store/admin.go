@@ -50,6 +50,7 @@ type PolicyRow struct {
 	CreatedByKind     string         `json:"created_by_kind"`
 	CreatedByID       string         `json:"created_by_id"`
 	Depth             int            `json:"depth"`
+	BotID             *string        `json:"bot_id,omitempty"` // NULL = global; set = applies only to that bot
 	ApprovedBy        *string        `json:"approved_by,omitempty"`
 	ApprovedAt        *time.Time     `json:"approved_at,omitempty"`
 	CreatedAt         time.Time      `json:"created_at"`
@@ -186,7 +187,7 @@ func (s *Store) ListUsers(ctx context.Context) ([]User, error) {
 func (s *Store) ListPolicies(ctx context.Context) ([]PolicyRow, error) {
 	rows, err := s.pool.Query(ctx,
 		`SELECT id, name, description, action_type_pattern, matcher_type, matcher_config, effect,
-		        priority, status, version, created_by_kind, created_by_id, depth,
+		        priority, status, version, created_by_kind, created_by_id, depth, bot_id,
 		        approved_by, approved_at, created_at
 		 FROM policies ORDER BY created_at DESC`)
 	if err != nil {
@@ -199,7 +200,7 @@ func (s *Store) ListPolicies(ctx context.Context) ([]PolicyRow, error) {
 		var p PolicyRow
 		if err := rows.Scan(&p.ID, &p.Name, &p.Description, &p.ActionTypePattern, &p.MatcherType,
 			&p.MatcherConfig, &p.Effect, &p.Priority, &p.Status, &p.Version,
-			&p.CreatedByKind, &p.CreatedByID, &p.Depth,
+			&p.CreatedByKind, &p.CreatedByID, &p.Depth, &p.BotID,
 			&p.ApprovedBy, &p.ApprovedAt, &p.CreatedAt); err != nil {
 			return nil, err
 		}

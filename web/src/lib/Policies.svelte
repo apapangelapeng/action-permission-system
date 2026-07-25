@@ -16,6 +16,7 @@
     value: '',
     effect: 'require_approval',
     priority: 100,
+    bot_id: '',
   })
 
   const effectPill = { allow: 'ok', require_approval: 'warn', deny: 'err' }
@@ -52,6 +53,7 @@
           matcher_config,
           effect: form.effect,
           priority: Number(form.priority) || 100,
+          bot_id: form.bot_id || null,
         },
       })
       if (!r.ok) {
@@ -121,6 +123,13 @@
         <label><span class="small muted">Exact value</span>
           <input class="input mono" bind:value={form.value} required /></label>
       {/if}
+      <label><span class="small muted">Applies to</span>
+        <select class="input" bind:value={form.bot_id}>
+          <option value="">All bots (global)</option>
+          {#each Object.entries(dir.bots) as [id, name] (id)}
+            <option value={id}>only {name}</option>
+          {/each}
+        </select></label>
       <label><span class="small muted">Effect on match</span>
         <select class="input" bind:value={form.effect}>
           <option value="allow">allow — runs without asking</option>
@@ -137,7 +146,7 @@
   <div class="card tbl-wrap">
     <table class="tbl">
       <thead>
-        <tr><th>Policy</th><th>Applies to</th><th>Matcher</th><th>Effect</th><th>Status</th><th>Author</th><th>Priority</th><th></th></tr>
+        <tr><th>Policy</th><th>Applies to</th><th>Scope</th><th>Matcher</th><th>Effect</th><th>Status</th><th>Author</th><th>Priority</th><th></th></tr>
       </thead>
       <tbody>
         {#each items as p (p.id)}
@@ -147,6 +156,13 @@
               <div class="muted small desc">{p.description}</div>
             </td>
             <td><code>{p.action_type_pattern}</code></td>
+            <td class="small">
+              {#if p.bot_id}
+                <span class="pill neutral">only {dir.bots[p.bot_id] || p.bot_id}</span>
+              {:else}
+                <span class="pill neutral">global</span>
+              {/if}
+            </td>
             <td class="small">
               <code>{p.matcher_type}</code>
               <div class="muted mono cfg">{JSON.stringify(p.matcher_config)}</div>

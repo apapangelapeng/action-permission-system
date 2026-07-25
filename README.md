@@ -101,6 +101,15 @@ with no policies covering a new bot's actions, everything it tries fails
 closed into the human queue. Unknown keys are rejected outright (401);
 identities are minted by humans, never self-registered.
 
+### Global vs. bot-scoped policies
+
+A policy applies to **all bots** (global) or to **one bot** (`bot_id` set —
+"Applies to" in the policy form). Evaluation sees global rules plus the
+acting bot's own; another bot's rules are invisible to it. Bot proposals
+are always pinned to the proposing bot — a bot may write rules for itself
+(with human approval), never for others; only humans create global rules.
+The duplicate check is scope-aware: two bots may hold equivalent rules.
+
 ## Poke at it from the terminal
 
 `scripts/test-bot.sh` wraps the API so you can play both roles by hand —

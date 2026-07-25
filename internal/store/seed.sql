@@ -49,12 +49,13 @@ INSERT INTO policies (id, name, description, action_type_pattern, matcher_type, 
 
 -- A policy the bot proposed that a human has NOT yet reviewed (pairs with the
 -- pending aps.policy.create request below — milestone 3's review queue).
+-- Bot proposals are always scoped to the proposing bot (bot_id).
 INSERT INTO policies (id, name, description, action_type_pattern, matcher_type, matcher_config,
-                      effect, priority, status, created_by_kind, created_by_id, depth, created_at) VALUES
+                      effect, priority, status, created_by_kind, created_by_id, depth, bot_id, created_at) VALUES
     ('pol_bot_http_get', 'http-gets-auto',
      'Proposed by demo-bot: GET requests are read-only and safe to auto-allow.',
      'http.request', 'regex', '{"field": "method", "pattern": "^GET$"}',
-     'allow', 100, 'pending_approval', 'bot', 'bot_demo', 1,
+     'allow', 100, 'pending_approval', 'bot', 'bot_demo', 1, 'bot_demo',
      now() - interval '25 minutes');
 
 -- A bot proposal a human rejected — the review story's other ending.

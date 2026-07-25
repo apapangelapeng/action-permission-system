@@ -12,25 +12,32 @@ import (
 func (s *Store) CreatePolicy(ctx context.Context, p *PolicyRow) error {
 	_, err := s.pool.Exec(ctx,
 		`INSERT INTO policies (id, name, description, action_type_pattern, matcher_type, matcher_config,
-		                       effect, priority, status, created_by_kind, created_by_id, depth,
+		                       effect, priority, status, created_by_kind, created_by_id, depth, bot_id,
 		                       approved_by, approved_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
-		         CASE WHEN $13::text IS NULL THEN NULL ELSE now() END)`,
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
+		         CASE WHEN $14::text IS NULL THEN NULL ELSE now() END)`,
 		p.ID, p.Name, p.Description, p.ActionTypePattern, p.MatcherType, p.MatcherConfig,
-		p.Effect, p.Priority, p.Status, p.CreatedByKind, p.CreatedByID, p.Depth, p.ApprovedBy)
+		p.Effect, p.Priority, p.Status, p.CreatedByKind, p.CreatedByID, p.Depth, p.BotID, p.ApprovedBy)
 	return err
+}
+
+// BotExists reports whether a bot id refers to a real bot (disabled counts).
+func (s *Store) BotExists(ctx context.Context, id string) (bool, error) {
+	var ok bool
+	err := s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM bots WHERE id = $1)`, id).Scan(&ok)
+	return ok, err
 }
 
 func (s *Store) PolicyByID(ctx context.Context, id string) (*PolicyRow, error) {
 	var p PolicyRow
 	err := s.pool.QueryRow(ctx,
 		`SELECT id, name, description, action_type_pattern, matcher_type, matcher_config, effect,
-		        priority, status, version, created_by_kind, created_by_id, depth,
+		        priority, status, version, created_by_kind, created_by_id, depth, bot_id,
 		        approved_by, approved_at, created_at
 		 FROM policies WHERE id = $1`, id).
 		Scan(&p.ID, &p.Name, &p.Description, &p.ActionTypePattern, &p.MatcherType,
 			&p.MatcherConfig, &p.Effect, &p.Priority, &p.Status, &p.Version,
-			&p.CreatedByKind, &p.CreatedByID, &p.Depth,
+			&p.CreatedByKind, &p.CreatedByID, &p.Depth, &p.BotID,
 			&p.ApprovedBy, &p.ApprovedAt, &p.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
@@ -58,14 +65,15 @@ func (s *Store) RejectPolicy(ctx context.Context, id string) (bool, error) {
 // name is deliberately ignored: renaming a rule doesn't make it a new rule.
 // Disabled and rejected policies don't count, so retired rules can be
 // re-proposed.
-func (s *Store) FindEquivalentPolicy(ctx context.Context, pattern, matcherType string, config map[string]any, effect string) (*PolicyRow, error) {
+func (s *Store) FindEquivalentPolicy(ctx context.Context, pattern, matcherType string, config map[string]any, effect string, botID *string) (*PolicyRow, error) {
 	var p PolicyRow
 	err := s.pool.QueryRow(ctx,
 		`SELECT id, name, status FROM policies
 		 WHERE status IN ('active', 'pending_approval')
 		   AND action_type_pattern = $1 AND matcher_type = $2
 		   AND matcher_config = $3 AND effect = $4
-		 LIMIT 1`, pattern, matcherType, config, effect).
+		   AND bot_id IS NOT DISTINCT FROM $5
+		 LIMIT 1`, pattern, matcherType, config, effect, botID).
 		Scan(&p.ID, &p.Name, &p.Status)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound

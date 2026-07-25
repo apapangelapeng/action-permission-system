@@ -21,6 +21,7 @@ type policySpec struct {
 	MatcherConfig     map[string]any `json:"matcher_config"`
 	Effect            string         `json:"effect"`
 	Priority          int            `json:"priority"`
+	BotID             *string        `json:"bot_id"` // nil = global; humans choose, bot proposals are forced to self
 }
 
 func (sp *policySpec) normalize() {
@@ -52,6 +53,13 @@ func (h *handlers) createPolicy(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if spec.BotID != nil {
+		ok, err := h.st.BotExists(r.Context(), *spec.BotID)
+		if err != nil || !ok {
+			writeError(w, http.StatusBadRequest, "bot_id does not refer to a known bot")
+			return
+		}
+	}
 	if dup := h.refuseDuplicate(w, r.Context(), &spec); dup {
 		return
 	}
@@ -69,6 +77,7 @@ func (h *handlers) createPolicy(w http.ResponseWriter, r *http.Request) {
 		CreatedByKind:     "human",
 		CreatedByID:       user.ID,
 		Depth:             0,
+		BotID:             spec.BotID,
 		ApprovedBy:        &user.ID,
 	}
 	if err := h.st.CreatePolicy(r.Context(), p); err != nil {
@@ -153,6 +162,9 @@ func (h *handlers) preparePolicyProposal(w http.ResponseWriter, r *http.Request,
 	if pr, ok := payload["priority"].(float64); ok {
 		spec.Priority = int(pr)
 	}
+	// A bot writes rules for itself only — whatever scope the payload claims,
+	// the proposal is pinned to the proposing bot. Global rules are human-made.
+	spec.BotID = &bot.ID
 	if err := spec.validate(); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid policy proposal: "+err.Error())
 		return "", false
@@ -182,6 +194,7 @@ func (h *handlers) preparePolicyProposal(w http.ResponseWriter, r *http.Request,
 		CreatedByKind:     "bot",
 		CreatedByID:       bot.ID,
 		Depth:             depth,
+		BotID:             &bot.ID,
 	}
 	if err := h.st.CreatePolicy(r.Context(), p); err != nil {
 		writeError(w, http.StatusInternalServerError, "could not store proposed policy")
@@ -217,7 +230,7 @@ func (h *handlers) applyPolicyDecision(ctx context.Context, ar *store.ActionRequ
 // is already active or awaiting review. Duplicate rules make "turn this off"
 // quietly mean "find all its copies" — so they never get created.
 func (h *handlers) refuseDuplicate(w http.ResponseWriter, ctx context.Context, spec *policySpec) bool {
-	existing, err := h.st.FindEquivalentPolicy(ctx, spec.ActionTypePattern, spec.MatcherType, spec.MatcherConfig, spec.Effect)
+	existing, err := h.st.FindEquivalentPolicy(ctx, spec.ActionTypePattern, spec.MatcherType, spec.MatcherConfig, spec.Effect, spec.BotID)
 	if err != nil {
 		return false // not found (or lookup error) — let creation proceed
 	}

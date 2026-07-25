@@ -152,7 +152,7 @@ func (h *handlers) submitAction(w http.ResponseWriter, r *http.Request) {
 		ar.Verdict, ar.Status = engine.VerdictDeny, "denied"
 		details["bot_disabled"] = true
 	} else {
-		policies, err := h.st.ActivePoliciesForTypes(ctx, engine.CandidateKeys(req.Type))
+		policies, err := h.st.ActivePoliciesForTypes(ctx, engine.CandidateKeys(req.Type), bot.ID)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "policy lookup failed")
 			return

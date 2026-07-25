@@ -107,7 +107,8 @@
             → <span class="pill {effectPill[item.payload.effect] || 'neutral'}">{item.payload.effect}</span>
           </p>
           <p class="small muted">
-            Approving this request activates the rule; future matching actions
+            Applies only to <b>{dir.bots[item.bot_id] || item.bot_id}</b> (bot proposals are always
+            scoped to the proposing bot). Approving this request activates the rule; future matching actions
             {item.payload.effect === 'allow' ? 'will run without asking a human' : `will get “${item.payload.effect}”`}.
           </p>
           <details><summary class="small muted">raw payload</summary>

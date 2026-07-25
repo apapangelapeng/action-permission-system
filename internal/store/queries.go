@@ -131,11 +131,14 @@ func (s *Store) UserBySessionToken(ctx context.Context, token string) (*User, er
 
 // ── policies & settings ─────────────────────────────────────────────────────
 
-func (s *Store) ActivePoliciesForTypes(ctx context.Context, candidateKeys []string) ([]engine.Policy, error) {
+// ActivePoliciesForTypes returns the policies that govern this bot for these
+// candidate type patterns: global rules (bot_id NULL) plus the bot's own.
+func (s *Store) ActivePoliciesForTypes(ctx context.Context, candidateKeys []string, botID string) ([]engine.Policy, error) {
 	rows, err := s.pool.Query(ctx,
 		`SELECT id, name, action_type_pattern, matcher_type, matcher_config, effect, priority, version
 		 FROM policies WHERE status = 'active' AND action_type_pattern = ANY($1)
-		 ORDER BY priority, created_at`, candidateKeys)
+		   AND (bot_id IS NULL OR bot_id = $2)
+		 ORDER BY priority, created_at`, candidateKeys, botID)
 	if err != nil {
 		return nil, err
 	}
