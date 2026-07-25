@@ -138,7 +138,10 @@ func (s *Store) ActivePoliciesForTypes(ctx context.Context, candidateKeys []stri
 		`SELECT id, name, action_type_pattern, matcher_type, matcher_config, effect, priority, version
 		 FROM policies WHERE status = 'active' AND action_type_pattern = ANY($1)
 		   AND (bot_id IS NULL OR bot_id = $2)
-		 ORDER BY priority, created_at`, candidateKeys, botID)
+		 ORDER BY priority, (bot_id IS NULL), created_at`, candidateKeys, botID)
+	// (bot_id IS NULL) sorts bot-scoped rules before global at equal priority,
+	// so the credited policy is the most specific one. The verdict itself is
+	// order-independent — effect precedence decides it.
 	if err != nil {
 		return nil, err
 	}
