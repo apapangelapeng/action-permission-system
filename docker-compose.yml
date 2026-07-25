@@ -5,6 +5,8 @@ services:
       POSTGRES_USER: aps
       POSTGRES_PASSWORD: aps
       POSTGRES_DB: aps
+    ports:
+      - "5433:5432" # host 5433 (5432 is taken by another local project); for GUI clients like Beekeeper
     volumes:
       - aps-pgdata:/var/lib/postgresql/data
     healthcheck:
