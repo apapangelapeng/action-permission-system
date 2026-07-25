@@ -104,6 +104,32 @@ func (h *handlers) disablePolicy(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"disabled": ids})
 }
 
+// ── POST /v1/policies/{id}/enable (disabled → active, no cascade) ───────────
+
+func (h *handlers) enablePolicy(w http.ResponseWriter, r *http.Request) {
+	user := h.user(w, r)
+	if user == nil {
+		return
+	}
+	id := r.PathValue("id")
+	p, err := h.st.PolicyByID(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "no such policy")
+		return
+	}
+	if p.Status != "disabled" {
+		writeError(w, http.StatusConflict, "only a disabled policy can be enabled (this one is "+p.Status+")")
+		return
+	}
+	ok, err := h.st.EnablePolicy(r.Context(), id, user.ID)
+	if err != nil || !ok {
+		writeError(w, http.StatusInternalServerError, "enable failed")
+		return
+	}
+	h.st.Audit(r.Context(), "human", &user.ID, "policy.enabled", "policy", id, nil)
+	writeJSON(w, http.StatusOK, map[string]any{"id": id, "status": "active"})
+}
+
 // ── bot proposals: hooks into the action flow ───────────────────────────────
 
 // preparePolicyProposal validates an aps.policy.create submission and stores

@@ -53,6 +53,16 @@ func (s *Store) RejectPolicy(ctx context.Context, id string) (bool, error) {
 	return res.RowsAffected() > 0, err
 }
 
+// EnablePolicy re-activates a disabled policy. The enabler is recorded as
+// the approver — turning a rule back on is taking responsibility for it.
+// Descendants disabled by a cascade stay disabled; re-enable them explicitly.
+func (s *Store) EnablePolicy(ctx context.Context, id, userID string) (bool, error) {
+	res, err := s.pool.Exec(ctx,
+		`UPDATE policies SET status = 'active', approved_by = $2, approved_at = now()
+		 WHERE id = $1 AND status = 'disabled'`, id, userID)
+	return res.RowsAffected() > 0, err
+}
+
 // DisablePolicyCascade disables a policy and every bot policy in its
 // authorization chain — revoking a rule revokes what it vouched for.
 func (s *Store) DisablePolicyCascade(ctx context.Context, id string) ([]string, error) {

@@ -68,10 +68,10 @@
     }
   }
 
-  async function disable(p) {
+  async function setEnabled(p, enabled) {
     busy = true
     try {
-      const r = await api(`/v1/policies/${p.id}/disable`, { method: 'POST' })
+      const r = await api(`/v1/policies/${p.id}/${enabled ? 'enable' : 'disable'}`, { method: 'POST' })
       if (r.ok) await load()
     } catch {
       onauthlost()
@@ -161,7 +161,13 @@
             <td class="muted">{p.priority}</td>
             <td>
               {#if p.status === 'active'}
-                <button class="btn" disabled={busy} onclick={() => disable(p)}>Disable</button>
+                <button class="btn" disabled={busy} onclick={() => setEnabled(p, false)} title="Also disables any bot policies this rule authorized">
+                  Disable
+                </button>
+              {:else if p.status === 'disabled'}
+                <button class="btn" disabled={busy} onclick={() => setEnabled(p, true)} title="Re-activate; you become the approver of record">
+                  Enable
+                </button>
               {/if}
             </td>
           </tr>
