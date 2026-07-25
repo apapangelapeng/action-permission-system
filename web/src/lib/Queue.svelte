@@ -1,7 +1,7 @@
 <script>
   import { api, countdown, relTime } from './api.js'
 
-  let { dir, onauthlost } = $props()
+  let { dir, onauthlost, onpending } = $props()
 
   let items = $state([])
   let loaded = $state(false)
@@ -16,6 +16,7 @@
       if (r.ok) {
         items = r.data
         loaded = true
+        onpending?.(items.length) // keep the header badge in sync — one fetch serves both
       }
     } catch {
       onauthlost()
@@ -24,11 +25,18 @@
 
   $effect(() => {
     load()
-    const poll = setInterval(load, 4000)
+    const poll = setInterval(() => {
+      if (!document.hidden) load()
+    }, 4000)
     const tick = setInterval(() => (now = Date.now()), 1000)
+    const onVisible = () => {
+      if (!document.hidden) load()
+    }
+    document.addEventListener('visibilitychange', onVisible)
     return () => {
       clearInterval(poll)
       clearInterval(tick)
+      document.removeEventListener('visibilitychange', onVisible)
     }
   })
 

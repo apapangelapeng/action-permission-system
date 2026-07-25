@@ -25,7 +25,9 @@
 
   $effect(() => {
     load()
-    const poll = setInterval(load, 6000)
+    const poll = setInterval(() => {
+      if (!document.hidden) load()
+    }, 6000)
     return () => clearInterval(poll)
   })
 </script>

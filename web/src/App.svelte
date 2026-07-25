@@ -40,6 +40,9 @@
   }
 
   async function pollPending() {
+    // The Queue screen polls the same list for its cards and reports the
+    // count up — no need to fetch it twice. Hidden tabs don't poll at all.
+    if (document.hidden || tab === 'queue') return
     try {
       const r = await api('/v1/actions?status=pending&limit=100')
       if (r.ok) pendingCount = r.data.length
@@ -58,10 +61,20 @@
     if (!user) return
     pollPending()
     const t = setInterval(pollPending, 4000)
-    const d = setInterval(loadDirectory, 30000)
+    const d = setInterval(() => {
+      if (!document.hidden) loadDirectory()
+    }, 30000)
+    const onVisible = () => {
+      if (!document.hidden) {
+        pollPending()
+        loadDirectory()
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
     return () => {
       clearInterval(t)
       clearInterval(d)
+      document.removeEventListener('visibilitychange', onVisible)
     }
   })
 
@@ -93,7 +106,7 @@
     </div>
   </header>
   <main>
-    <ActiveView {dir} onauthlost={authLost} />
+    <ActiveView {dir} onauthlost={authLost} onpending={(n) => (pendingCount = n)} />
   </main>
 {/if}
 
