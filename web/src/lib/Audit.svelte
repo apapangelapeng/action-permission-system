@@ -1,7 +1,7 @@
 <script>
   import { api, relTime } from './api.js'
 
-  let { dir, onauthlost } = $props()
+  let { dir, onauthlost, signal } = $props()
   let items = $state([])
 
   async function load() {
@@ -19,6 +19,11 @@
       if (!document.hidden) load()
     }, 6000)
     return () => clearInterval(poll)
+  })
+
+  // SSE nudge from App: something changed server-side, refetch now.
+  $effect(() => {
+    if (signal) load()
   })
 
   function actor(e) {

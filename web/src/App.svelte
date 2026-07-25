@@ -10,6 +10,9 @@
   let user = $state(getSession()?.user || null)
   let tab = $state('queue')
   let pendingCount = $state(0)
+  // Bumped by the SSE stream whenever anything changes server-side;
+  // screens watch it and refetch. Polling stays on as the fallback.
+  let live = $state(0)
   // dir maps ids → display names so every screen can attribute things.
   let dir = $state({ users: {}, bots: {}, policies: {} })
 
@@ -55,6 +58,20 @@
     if (!user) return
     tab // re-run on tab switch so names minted mid-session resolve everywhere
     loadDirectory()
+  })
+
+  $effect(() => {
+    if (!user) return
+    const token = getSession()?.token
+    if (!token) return
+    // EventSource can't send headers, so the token rides as a query param.
+    const es = new EventSource(`/v1/events?token=${encodeURIComponent(token)}`)
+    es.addEventListener('changed', () => {
+      if (document.hidden) return
+      live++
+      pollPending()
+    })
+    return () => es.close()
   })
 
   $effect(() => {
@@ -106,7 +123,7 @@
     </div>
   </header>
   <main>
-    <ActiveView {dir} onauthlost={authLost} onpending={(n) => (pendingCount = n)} />
+    <ActiveView {dir} signal={live} onauthlost={authLost} onpending={(n) => (pendingCount = n)} />
   </main>
 {/if}
 

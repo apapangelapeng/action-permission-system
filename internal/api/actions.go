@@ -20,6 +20,7 @@ const (
 
 type handlers struct {
 	st *store.Store
+	bc *Broadcaster
 }
 
 // ── auth helpers ────────────────────────────────────────────────────────────
@@ -207,6 +208,7 @@ func (h *handlers) submitAction(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	h.bc.Publish()
 	writeJSON(w, http.StatusCreated, ar)
 }
 
@@ -296,6 +298,7 @@ func (h *handlers) decideAction(w http.ResponseWriter, r *http.Request) {
 		h.applyPolicyDecision(r.Context(), ar, user, newStatus == "approved")
 	}
 
+	h.bc.Publish()
 	writeJSON(w, http.StatusOK, ar)
 }
 
@@ -337,6 +340,7 @@ func (h *handlers) reportExecuted(w http.ResponseWriter, r *http.Request) {
 		details["error"] = req.Error
 	}
 	h.st.Audit(r.Context(), "bot", &bot.ID, event, "action_request", ar.ID, details)
+	h.bc.Publish()
 	writeJSON(w, http.StatusOK, ar)
 }
 
@@ -344,7 +348,7 @@ func (h *handlers) reportExecuted(w http.ResponseWriter, r *http.Request) {
 
 // RunExpirySweeper marks overdue pending/approved requests expired every
 // interval until ctx is cancelled. Meant to run as a goroutine from main.
-func RunExpirySweeper(ctx context.Context, st *store.Store, interval time.Duration) {
+func RunExpirySweeper(ctx context.Context, st *store.Store, bc *Broadcaster, interval time.Duration) {
 	t := time.NewTicker(interval)
 	defer t.Stop()
 	for {
@@ -371,6 +375,7 @@ func RunExpirySweeper(ctx context.Context, st *store.Store, interval time.Durati
 			}
 			if len(expired) > 0 {
 				log.Printf("expired %d overdue request(s)", len(expired))
+				bc.Publish()
 			}
 		}
 	}

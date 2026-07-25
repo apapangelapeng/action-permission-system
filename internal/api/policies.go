@@ -87,6 +87,7 @@ func (h *handlers) createPolicy(w http.ResponseWriter, r *http.Request) {
 	h.st.Audit(r.Context(), "human", &user.ID, "policy.created", "policy", p.ID,
 		map[string]any{"effect": p.Effect, "pattern": p.ActionTypePattern})
 	h.st.Audit(r.Context(), "human", &user.ID, "policy.activated", "policy", p.ID, nil)
+	h.bc.Publish()
 	writeJSON(w, http.StatusCreated, p)
 }
 
@@ -114,6 +115,7 @@ func (h *handlers) disablePolicy(w http.ResponseWriter, r *http.Request) {
 		}
 		h.st.Audit(r.Context(), "human", &user.ID, "policy.disabled", "policy", pid, details)
 	}
+	h.bc.Publish()
 	writeJSON(w, http.StatusOK, map[string]any{"disabled": ids})
 }
 
@@ -140,6 +142,7 @@ func (h *handlers) enablePolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.st.Audit(r.Context(), "human", &user.ID, "policy.enabled", "policy", id, nil)
+	h.bc.Publish()
 	writeJSON(w, http.StatusOK, map[string]any{"id": id, "status": "active"})
 }
 

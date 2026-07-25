@@ -12,8 +12,8 @@ import (
 	"github.com/apapangelapeng/action-permission-system/web"
 )
 
-func NewRouter(st *store.Store) http.Handler {
-	h := &handlers{st: st}
+func NewRouter(st *store.Store, bc *Broadcaster) http.Handler {
+	h := &handlers{st: st, bc: bc}
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -41,6 +41,7 @@ func NewRouter(st *store.Store) http.Handler {
 	mux.HandleFunc("POST /v1/bots/{id}/disable", h.setBotDisabled(true))
 	mux.HandleFunc("POST /v1/bots/{id}/enable", h.setBotDisabled(false))
 	mux.HandleFunc("GET /v1/system/auto-allow", h.getAutoAllow)
+	mux.HandleFunc("GET /v1/events", h.events)
 	mux.HandleFunc("PUT /v1/system/auto-allow", h.putAutoAllow)
 
 	// bots

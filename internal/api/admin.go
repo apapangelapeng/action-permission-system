@@ -109,6 +109,7 @@ func (h *handlers) createBot(w http.ResponseWriter, r *http.Request) {
 	}
 	h.st.Audit(r.Context(), "human", &user.ID, "bot.created", "bot", bot.ID,
 		map[string]any{"name": bot.Name})
+	h.bc.Publish()
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"id":      bot.ID,
 		"name":    bot.Name,
@@ -139,6 +140,7 @@ func (h *handlers) setBotDisabled(disabled bool) http.HandlerFunc {
 			event = "bot.disabled"
 		}
 		h.st.Audit(r.Context(), "human", &user.ID, event, "bot", id, nil)
+		h.bc.Publish()
 		writeJSON(w, http.StatusOK, map[string]any{"id": id, "disabled": disabled})
 	}
 }
@@ -178,5 +180,6 @@ func (h *handlers) putAutoAllow(w http.ResponseWriter, r *http.Request) {
 		event = "system.auto_allow_suspended"
 	}
 	h.st.Audit(r.Context(), "human", &user.ID, event, "system", "auto_allow_suspended", nil)
+	h.bc.Publish()
 	writeJSON(w, http.StatusOK, map[string]bool{"suspended": *req.Suspended})
 }

@@ -1,7 +1,7 @@
 <script>
   import { api } from './api.js'
 
-  let { onauthlost } = $props()
+  let { onauthlost, signal } = $props()
   let suspended = $state(null)
   let bots = $state([])
   let busy = $state(false)
@@ -21,6 +21,11 @@
 
   $effect(() => {
     load()
+  })
+
+  // SSE nudge from App: something changed server-side, refetch now.
+  $effect(() => {
+    if (signal) load()
   })
 
   async function setSuspended(value) {

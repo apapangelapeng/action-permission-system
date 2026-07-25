@@ -1,7 +1,7 @@
 <script>
   import { api, countdown, relTime } from './api.js'
 
-  let { dir, onauthlost, onpending } = $props()
+  let { dir, onauthlost, onpending, signal } = $props()
 
   let items = $state([])
   let loaded = $state(false)
@@ -38,6 +38,11 @@
       clearInterval(tick)
       document.removeEventListener('visibilitychange', onVisible)
     }
+  })
+
+  // SSE nudge from App: something changed server-side, refetch now.
+  $effect(() => {
+    if (signal) load()
   })
 
   async function decide(item, decision) {

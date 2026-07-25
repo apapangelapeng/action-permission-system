@@ -1,7 +1,7 @@
 <script>
   import { api } from './api.js'
 
-  let { dir, onauthlost } = $props()
+  let { dir, onauthlost, signal } = $props()
   let items = $state([])
   let showForm = $state(false)
   let formError = $state('')
@@ -33,6 +33,11 @@
 
   $effect(() => {
     load()
+  })
+
+  // SSE nudge from App: something changed server-side, refetch now.
+  $effect(() => {
+    if (signal) load()
   })
 
   async function create(e) {
