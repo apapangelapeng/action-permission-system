@@ -82,6 +82,31 @@ if req.Allowed() {
 bot); `ProposePolicy` submits a rule through the same approval queue. The HTTP
 contract is two endpoints, so any language can integrate without the SDK.
 
+## Poke at it from the terminal
+
+`scripts/test-bot.sh` wraps the API so you can play both roles by hand —
+submit actions as the bot, decide them as alice or bob:
+
+```sh
+./scripts/test-bot.sh read       # SELECT → auto-allowed instantly
+./scripts/test-bot.sh drop       # DROP TABLE → denied instantly
+./scripts/test-bot.sh write      # UPDATE payments → pending, waits for a human
+./scripts/test-bot.sh email      # email.send → pending (fail-closed default)
+./scripts/test-bot.sh propose    # bot proposes a policy → lands in the queue
+
+./scripts/test-bot.sh queue                      # what's waiting for a human
+./scripts/test-bot.sh poll <id>                  # state of one request
+./scripts/test-bot.sh approve <id> alice looks fine
+./scripts/test-bot.sh deny <id> bob too risky
+./scripts/test-bot.sh done <id>                  # bot reports executed (consumes approval)
+```
+
+Things worth trying: decide the same id twice (409 — first decision wins),
+`done` twice (409 — approvals are single-use), `propose` then approve the
+proposal and watch `email` start auto-allowing, and let a pending request sit
+15 minutes to see TTL expiry count as a no. `APS_URL` and `APS_BOT_KEY`
+override the defaults.
+
 ## Try the decision loop (curl)
 
 ```sh
