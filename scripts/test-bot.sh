@@ -15,7 +15,7 @@
 set -euo pipefail
 
 BASE="${APS_URL:-http://localhost:8080}"
-KEY="${APS_BOT_KEY:-aps_demo_bot_key_5f2a9c}"
+KEY="${APS_BOT_KEY:-aps_95e649720496234ad390a2fc324c9df91f60a8934d84ff6d}"
 J='Content-Type: application/json'
 
 pretty() { python3 -m json.tool; }

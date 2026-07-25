@@ -135,13 +135,10 @@ func (s *Store) UserBySessionToken(ctx context.Context, token string) (*User, er
 // candidate type patterns: global rules (bot_id NULL) plus the bot's own.
 func (s *Store) ActivePoliciesForTypes(ctx context.Context, candidateKeys []string, botID string) ([]engine.Policy, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT id, name, action_type_pattern, matcher_type, matcher_config, effect, priority, version
+		`SELECT id, name, action_type_pattern, matcher_type, matcher_config, effect, priority, version, bot_id
 		 FROM policies WHERE status = 'active' AND action_type_pattern = ANY($1)
 		   AND (bot_id IS NULL OR bot_id = $2)
 		 ORDER BY priority, (bot_id IS NULL), created_at`, candidateKeys, botID)
-	// (bot_id IS NULL) sorts bot-scoped rules before global at equal priority,
-	// so the credited policy is the most specific one. The verdict itself is
-	// order-independent — effect precedence decides it.
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +148,7 @@ func (s *Store) ActivePoliciesForTypes(ctx context.Context, candidateKeys []stri
 	for rows.Next() {
 		var p engine.Policy
 		if err := rows.Scan(&p.ID, &p.Name, &p.ActionTypePattern, &p.MatcherType,
-			&p.MatcherConfig, &p.Effect, &p.Priority, &p.Version); err != nil {
+			&p.MatcherConfig, &p.Effect, &p.Priority, &p.Version, &p.BotID); err != nil {
 			return nil, err
 		}
 		out = append(out, p)

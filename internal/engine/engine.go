@@ -30,12 +30,14 @@ type Policy struct {
 	Effect            string
 	Priority          int
 	Version           int
+	BotID             *string // nil = global; set = scoped to one bot (the higher tier)
 }
 
 type Result struct {
 	Verdict         string
 	MatchedPolicyID string   // empty when the fail-closed default applied
-	MatcherErrors   []string // non-empty forces at least require_approval
+	MatcherErrors   []string // non-empty forces at least require_approval in the erroring tier
+	OverrodeGlobal  bool     // a bot-scoped rule decided differently than global rules would have
 }
 
 // CandidateKeys returns every pattern that could match actionType:
@@ -50,47 +52,63 @@ func CandidateKeys(actionType string) []string {
 	return append(keys, "*")
 }
 
-// Evaluate runs each policy's matcher against the payload and combines the
-// fired effects by precedence. Policies must already be selected via
-// CandidateKeys; type patterns are not re-checked here.
+// Evaluate runs each policy's matcher against the payload and combines fired
+// effects in two tiers: the bot's own rules outrank global rules. If any
+// bot-scoped policy fires, the scoped tier decides (deny > require_approval >
+// allow within it) — so a bot-specific allow pierces a global deny, and a
+// bot-specific deny beats a global allow. Global rules decide only when no
+// scoped rule fired. A broken matcher counts as require_approval in its own
+// tier (fail closed). Policies must already be selected via CandidateKeys.
 func Evaluate(policies []Policy, payload map[string]any) Result {
 	sorted := make([]Policy, len(policies))
 	copy(sorted, policies)
 	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].Priority < sorted[j].Priority })
 
 	var res Result
-	first := map[string]string{} // effect → first policy that fired with it
+	scoped := map[string]string{} // effect → first policy id that fired with it
+	global := map[string]string{}
 	for _, p := range sorted {
 		fired, err := runMatcher(p, payload)
+		effect := p.Effect
+		policyID := p.ID
 		if err != nil {
 			res.MatcherErrors = append(res.MatcherErrors, fmt.Sprintf("%s: %v", p.ID, err))
+			effect, policyID = VerdictRequireApproval, "" // broken gate: fail closed, no credit
+		} else if !fired {
 			continue
 		}
-		if !fired {
-			continue
+		tier := global
+		if p.BotID != nil {
+			tier = scoped
 		}
-		if _, seen := first[p.Effect]; !seen {
-			first[p.Effect] = p.ID
-		}
-		if p.Effect == VerdictDeny {
-			break // nothing can override a deny
+		if existing, seen := tier[effect]; !seen || (existing == "" && policyID != "") {
+			tier[effect] = policyID
 		}
 	}
 
-	switch {
-	case first[VerdictDeny] != "":
-		res.Verdict, res.MatchedPolicyID = VerdictDeny, first[VerdictDeny]
-	case first[VerdictRequireApproval] != "":
-		res.Verdict, res.MatchedPolicyID = VerdictRequireApproval, first[VerdictRequireApproval]
-	case len(res.MatcherErrors) > 0:
-		// A broken policy might have been a gate; never let an allow ride past it.
-		res.Verdict = VerdictRequireApproval
-	case first[VerdictAllow] != "":
-		res.Verdict, res.MatchedPolicyID = VerdictAllow, first[VerdictAllow]
-	default:
-		res.Verdict = VerdictRequireApproval // silence is a question, not a yes
+	if verdict, id, ok := decideTier(scoped); ok {
+		res.Verdict, res.MatchedPolicyID = verdict, id
+		if globalVerdict, _, globalFired := decideTier(global); globalFired && globalVerdict != verdict {
+			res.OverrodeGlobal = true
+		}
+		return res
 	}
+	if verdict, id, ok := decideTier(global); ok {
+		res.Verdict, res.MatchedPolicyID = verdict, id
+		return res
+	}
+	res.Verdict = VerdictRequireApproval // silence is a question, not a yes
 	return res
+}
+
+// decideTier applies effect precedence within one tier.
+func decideTier(fired map[string]string) (verdict, policyID string, ok bool) {
+	for _, effect := range []string{VerdictDeny, VerdictRequireApproval, VerdictAllow} {
+		if id, seen := fired[effect]; seen {
+			return effect, id, true
+		}
+	}
+	return "", "", false
 }
 
 func runMatcher(p Policy, payload map[string]any) (bool, error) {

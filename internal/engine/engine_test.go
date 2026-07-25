@@ -90,6 +90,70 @@ func TestExactMatcher(t *testing.T) {
 	}
 }
 
+func scopedPolicy(id, effect, field, pattern string, priority int, botID string) Policy {
+	p := regexPolicy(id, effect, field, pattern, priority)
+	p.BotID = &botID
+	return p
+}
+
+func TestScopedAllowPiercesGlobalDeny(t *testing.T) {
+	pols := []Policy{
+		regexPolicy("global-no-secrets", VerdictDeny, "path", `.`, 10),
+		scopedPolicy("edge-bot-secrets", VerdictAllow, "path", `^prod/`, 100, "bot_edge"),
+	}
+	res := Evaluate(pols, map[string]any{"path": "prod/db-password"})
+	if res.Verdict != VerdictAllow || res.MatchedPolicyID != "edge-bot-secrets" {
+		t.Fatalf("scoped allow must pierce global deny, got %+v", res)
+	}
+	if !res.OverrodeGlobal {
+		t.Fatalf("override should be flagged, got %+v", res)
+	}
+}
+
+func TestScopedDenyBeatsGlobalAllow(t *testing.T) {
+	pols := []Policy{
+		regexPolicy("global-exports-ok", VerdictAllow, "table", `.`, 10),
+		scopedPolicy("edge-no-exports", VerdictDeny, "table", `.`, 100, "bot_edge"),
+	}
+	res := Evaluate(pols, map[string]any{"table": "orders"})
+	if res.Verdict != VerdictDeny || res.MatchedPolicyID != "edge-no-exports" || !res.OverrodeGlobal {
+		t.Fatalf("scoped deny must beat global allow, got %+v", res)
+	}
+}
+
+func TestGlobalDecidesWhenNoScopedRuleFires(t *testing.T) {
+	pols := []Policy{
+		regexPolicy("global-no-drop", VerdictDeny, "sql", `DROP`, 10),
+		scopedPolicy("scoped-selects", VerdictAllow, "sql", `^SELECT`, 100, "bot_edge"),
+	}
+	res := Evaluate(pols, map[string]any{"sql": "DROP TABLE users"})
+	if res.Verdict != VerdictDeny || res.MatchedPolicyID != "global-no-drop" || res.OverrodeGlobal {
+		t.Fatalf("global deny should stand when no scoped rule fires, got %+v", res)
+	}
+}
+
+func TestDenyStillWinsWithinScopedTier(t *testing.T) {
+	pols := []Policy{
+		scopedPolicy("scoped-allow-all", VerdictAllow, "sql", `.`, 1, "bot_edge"),
+		scopedPolicy("scoped-no-drop", VerdictDeny, "sql", `DROP`, 999, "bot_edge"),
+	}
+	res := Evaluate(pols, map[string]any{"sql": "DROP TABLE users"})
+	if res.Verdict != VerdictDeny || res.MatchedPolicyID != "scoped-no-drop" {
+		t.Fatalf("deny beats allow within the scoped tier, got %+v", res)
+	}
+}
+
+func TestBrokenScopedPolicyFailsClosedInItsTier(t *testing.T) {
+	pols := []Policy{
+		scopedPolicy("scoped-allow", VerdictAllow, "sql", `^SELECT`, 100, "bot_edge"),
+		scopedPolicy("scoped-broken", VerdictDeny, "sql", `(unclosed`, 10, "bot_edge"),
+	}
+	res := Evaluate(pols, map[string]any{"sql": "SELECT 1"})
+	if res.Verdict != VerdictRequireApproval {
+		t.Fatalf("a broken scoped gate must fail closed, got %+v", res)
+	}
+}
+
 func TestSameEffectAttributionByPriority(t *testing.T) {
 	pols := []Policy{
 		regexPolicy("late", VerdictAllow, "sql", `.`, 200),

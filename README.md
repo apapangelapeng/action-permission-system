@@ -113,12 +113,15 @@ and the same rule may exist both globally and per-bot — only a same-scope
 twin is refused. Names are not — a live name means exactly one rule,
 whatever its scope.
 
-Cross-scope precedence is effect precedence over the union of global rules
-plus the acting bot's own: a **bot-specific deny beats a global allow** for
-that bot (others are untouched), and — deliberately — a bot-specific allow
-can **not** pierce a global deny: safety rules like `no-destruction` are
-un-carve-able. When rules of the same effect match at equal priority, the
-bot-specific one is credited in the audit trail.
+Cross-scope precedence is tiered: **a bot's own rules outrank global
+rules**. If any bot-scoped rule fires, the scoped tier decides for that bot
+(deny > require_approval > allow within it) — so a bot-specific deny beats
+a global allow, and a bot-specific allow pierces a global deny. Global
+rules decide only when none of the bot's own rules fire, so a scoped
+carve-out (`^prod/` only) leaves the global rule standing everywhere else.
+The guard is that every bot-scoped rule was human-approved for exactly
+that bot — and when a scoped rule overrides what global rules would have
+said, the audit entry is flagged `scoped_override_of_global`.
 
 ## Poke at it from the terminal
 

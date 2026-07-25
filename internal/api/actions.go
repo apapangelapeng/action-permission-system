@@ -168,6 +168,11 @@ func (h *handlers) submitAction(w http.ResponseWriter, r *http.Request) {
 		if len(res.MatcherErrors) > 0 {
 			details["matcher_errors"] = res.MatcherErrors
 		}
+		if res.OverrodeGlobal {
+			// This bot's own rule decided differently than global rules would
+			// have — worth seeing at a glance in the audit trail.
+			details["scoped_override_of_global"] = true
+		}
 		// Global kill switch: allows are downgraded, denies stay denies.
 		if ar.Verdict == engine.VerdictAllow && h.st.BoolSetting(ctx, "auto_allow_suspended", false) {
 			ar.Verdict = engine.VerdictRequireApproval
