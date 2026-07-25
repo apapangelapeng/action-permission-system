@@ -4,8 +4,12 @@ package api
 // All require a human session.
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
+	"strings"
+
+	"github.com/apapangelapeng/action-permission-system/internal/store"
 )
 
 func (h *handlers) listActions(w http.ResponseWriter, r *http.Request) {
@@ -74,6 +78,42 @@ func (h *handlers) listPolicies(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// createBot backs POST /v1/bots: a human mints a new bot identity and gets
+// the API key back exactly once. The bot works immediately — no enable step —
+// because its actions still fail closed through policies like everyone else's.
+func (h *handlers) createBot(w http.ResponseWriter, r *http.Request) {
+	user := h.user(w, r)
+	if user == nil {
+		return
+	}
+	var req struct {
+		Name string `json:"name"`
+	}
+	if !readJSON(w, r, &req) {
+		return
+	}
+	if strings.TrimSpace(req.Name) == "" {
+		writeError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+	bot, key, err := h.st.CreateBot(r.Context(), strings.TrimSpace(req.Name), user.ID)
+	if errors.Is(err, store.ErrConflict) {
+		writeError(w, http.StatusConflict, "a bot with that name already exists")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not create bot")
+		return
+	}
+	h.st.Audit(r.Context(), "human", &user.ID, "bot.created", "bot", bot.ID,
+		map[string]any{"name": bot.Name})
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"id":      bot.ID,
+		"name":    bot.Name,
+		"api_key": key, // shown exactly once; only the hash is stored
+	})
 }
 
 // setBotDisabled backs POST /v1/bots/{id}/disable and .../enable —

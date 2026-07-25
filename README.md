@@ -82,6 +82,25 @@ if req.Allowed() {
 bot); `ProposePolicy` submits a rule through the same approval queue. The HTTP
 contract is two endpoints, so any language can integrate without the SDK.
 
+## Adding bots
+
+A bot **is** its API key: one key = one bot identity. Every process
+presenting the same key acts as the same bot — same policies, same kill
+switch, same audit attribution. Mint keys from the dashboard (Controls →
+"Create bot + API key") or the API:
+
+```sh
+curl -s -X POST localhost:8080/v1/bots -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"name":"deploy-bot"}'
+# -> {"id":"bot_…","name":"deploy-bot","api_key":"aps_…"}   # key shown exactly once
+```
+
+The new bot works immediately — no enable step — because recognition and
+permission are different layers: the key only proves *who* is asking, and
+with no policies covering a new bot's actions, everything it tries fails
+closed into the human queue. Unknown keys are rejected outright (401);
+identities are minted by humans, never self-registered.
+
 ## Poke at it from the terminal
 
 `scripts/test-bot.sh` wraps the API so you can play both roles by hand —

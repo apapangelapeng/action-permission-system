@@ -37,6 +37,7 @@ func NewRouter(st *store.Store) http.Handler {
 	mux.HandleFunc("POST /v1/policies", h.createPolicy)
 	mux.HandleFunc("POST /v1/policies/{id}/disable", h.disablePolicy)
 	mux.HandleFunc("POST /v1/policies/{id}/enable", h.enablePolicy)
+	mux.HandleFunc("POST /v1/bots", h.createBot)
 	mux.HandleFunc("POST /v1/bots/{id}/disable", h.setBotDisabled(true))
 	mux.HandleFunc("POST /v1/bots/{id}/enable", h.setBotDisabled(false))
 	mux.HandleFunc("GET /v1/system/auto-allow", h.getAutoAllow)

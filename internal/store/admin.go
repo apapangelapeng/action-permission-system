@@ -2,9 +2,19 @@ package store
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"errors"
 	"strconv"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgconn"
+
+	"github.com/apapangelapeng/action-permission-system/internal/auth"
 )
+
+// ErrConflict marks a uniqueness violation (e.g. bot name already taken).
+var ErrConflict = errors.New("conflict")
 
 // Read models and mutations backing the dashboard.
 
@@ -109,6 +119,28 @@ func (s *Store) ListBots(ctx context.Context) ([]BotInfo, error) {
 		out = append(out, b)
 	}
 	return out, rows.Err()
+}
+
+// CreateBot mints a bot identity: one API key = one bot. The plaintext key
+// is returned exactly once; only its hash is stored. Any process presenting
+// the key is this bot — same policies, same kill switch, same audit trail.
+func (s *Store) CreateBot(ctx context.Context, name, createdBy string) (*BotInfo, string, error) {
+	raw := make([]byte, 24)
+	rand.Read(raw)
+	key := "aps_" + hex.EncodeToString(raw)
+
+	b := &BotInfo{ID: NewID("bot"), Name: name, CreatedAt: time.Now().UTC()}
+	_, err := s.pool.Exec(ctx,
+		`INSERT INTO bots (id, name, api_key_hash, created_by) VALUES ($1, $2, $3, $4)`,
+		b.ID, name, auth.HashSecret(key), createdBy)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return nil, "", ErrConflict
+		}
+		return nil, "", err
+	}
+	return b, key, nil
 }
 
 // SetBotDisabled flips the per-bot kill switch. found=false → no such bot.
