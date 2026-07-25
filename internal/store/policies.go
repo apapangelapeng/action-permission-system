@@ -81,6 +81,25 @@ func (s *Store) FindEquivalentPolicy(ctx context.Context, pattern, matcherType s
 	return &p, err
 }
 
+// FindPolicyByName returns an active or pending policy with the same name,
+// compared case-insensitively and ignoring surrounding whitespace. The name is
+// how a human refers to a rule ("disable db-reads-auto"), so two live rules
+// may never share one — even when they say different things. Disabled and
+// rejected policies release their name for reuse.
+func (s *Store) FindPolicyByName(ctx context.Context, name string) (*PolicyRow, error) {
+	var p PolicyRow
+	err := s.pool.QueryRow(ctx,
+		`SELECT id, name, status FROM policies
+		 WHERE status IN ('active', 'pending_approval')
+		   AND lower(btrim(name)) = lower(btrim($1))
+		 LIMIT 1`, name).
+		Scan(&p.ID, &p.Name, &p.Status)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	return &p, err
+}
+
 // EnablePolicy re-activates a disabled policy. The enabler is recorded as
 // the approver — turning a rule back on is taking responsibility for it.
 // Descendants disabled by a cascade stay disabled; re-enable them explicitly.

@@ -60,7 +60,7 @@ func (h *handlers) createPolicy(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if dup := h.refuseDuplicate(w, r.Context(), &spec); dup {
+	if dup := h.refuseDuplicate(w, r.Context(), &spec, "human", user.ID); dup {
 		return
 	}
 
@@ -169,9 +169,9 @@ func (h *handlers) preparePolicyProposal(w http.ResponseWriter, r *http.Request,
 		writeError(w, http.StatusBadRequest, "invalid policy proposal: "+err.Error())
 		return "", false
 	}
-	if dup := h.refuseDuplicate(w, r.Context(), &spec); dup {
-		h.st.Audit(r.Context(), "bot", &bot.ID, "policy.duplicate_refused", "policy", "-",
-			map[string]any{"pattern": spec.ActionTypePattern, "effect": spec.Effect})
+	// Refused here, before any row exists: the proposal never reaches the
+	// Policies tab or the Queue — the audit trail is its only record.
+	if dup := h.refuseDuplicate(w, r.Context(), &spec, "bot", bot.ID); dup {
 		return "", false
 	}
 
@@ -225,18 +225,38 @@ func (h *handlers) applyPolicyDecision(ctx context.Context, ar *store.ActionRequ
 	}
 }
 
-// refuseDuplicate writes a 409 and returns true when a semantically
-// equivalent policy (same pattern + matcher + config + effect; name ignored)
-// is already active or awaiting review. Duplicate rules make "turn this off"
-// quietly mean "find all its copies" — so they never get created.
-func (h *handlers) refuseDuplicate(w http.ResponseWriter, ctx context.Context, spec *policySpec) bool {
+// refuseDuplicate writes a 409 and returns true when the spec collides with a
+// policy that is already active or awaiting review — either semantically (same
+// pattern + matcher + config + effect, name ignored) or by name. Duplicate
+// rules make "turn this off" quietly mean "find all its copies", and a reused
+// name makes it ambiguous which rule that even is — so neither gets created.
+//
+// A refused policy is never stored, so it never appears in the Policies tab:
+// the attempt survives only as the audit event written here.
+func (h *handlers) refuseDuplicate(w http.ResponseWriter, ctx context.Context, spec *policySpec, actorKind, actorID string) bool {
 	existing, err := h.st.FindEquivalentPolicy(ctx, spec.ActionTypePattern, spec.MatcherType, spec.MatcherConfig, spec.Effect, spec.BotID)
-	if err != nil {
-		return false // not found (or lookup error) — let creation proceed
+	reason, msg := "equivalent", ""
+	if err == nil {
+		msg = fmt.Sprintf("an equivalent policy already exists: %s (%q, status %s) has the same pattern, matcher, and effect",
+			existing.ID, existing.Name, existing.Status)
+	} else {
+		existing, err = h.st.FindPolicyByName(ctx, spec.Name)
+		if err != nil {
+			return false // no collision (or lookup error) — let creation proceed
+		}
+		reason = "name"
+		msg = fmt.Sprintf("a policy named %q already exists: %s (status %s) — pick a different name, or disable that one first",
+			existing.Name, existing.ID, existing.Status)
 	}
-	writeError(w, http.StatusConflict, fmt.Sprintf(
-		"an equivalent policy already exists: %s (%q, status %s) has the same pattern, matcher, and effect",
-		existing.ID, existing.Name, existing.Status))
+
+	writeError(w, http.StatusConflict, msg)
+	h.st.Audit(ctx, actorKind, &actorID, "policy.duplicate_refused", "policy", existing.ID, map[string]any{
+		"reason":         reason,
+		"refused_name":   spec.Name,
+		"conflicts_with": existing.ID,
+		"pattern":        spec.ActionTypePattern,
+		"effect":         spec.Effect,
+	})
 	return true
 }
 

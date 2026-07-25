@@ -108,7 +108,8 @@ A policy applies to **all bots** (global) or to **one bot** (`bot_id` set —
 acting bot's own; another bot's rules are invisible to it. Bot proposals
 are always pinned to the proposing bot — a bot may write rules for itself
 (with human approval), never for others; only humans create global rules.
-The duplicate check is scope-aware: two bots may hold equivalent rules.
+The equivalence check is scope-aware: two bots may hold equivalent rules.
+Names are not — a live name means exactly one rule, whatever its scope.
 
 ## Poke at it from the terminal
 
@@ -176,11 +177,19 @@ everything else (a hard invariant refuses any policy that would auto-allow
 activates the rule; denying rejects it; letting it expire rejects it too.
 Disabling a policy cascades to any bot policies it authorized.
 
-Duplicates are refused: if a policy with the same pattern, matcher, and
-effect is already active or awaiting review, creating another one — bot
-proposal or human — gets a 409 pointing at the existing rule. The name is
-ignored on purpose; renaming a rule doesn't make it a new rule. (Disabled
-and rejected policies don't block, so a retired rule can be re-proposed.)
+Duplicates are refused two ways. If a policy with the same pattern, matcher,
+and effect is already active or awaiting review, creating another one — bot
+proposal or human — gets a 409 pointing at the existing rule; the name is
+ignored on purpose, since renaming a rule doesn't make it a new rule. A
+**reused name** is refused the same way (case- and whitespace-insensitive),
+because the name is how a human says which rule to turn off. (Disabled and
+rejected policies block neither check, so a retired rule can be re-proposed
+and its name reused.)
+
+A refused policy is never stored, so it never shows up in the Policies tab
+or the queue — the only record is a `policy.duplicate_refused` audit event
+naming the rule it collided with, visible in the Audit tab and the server
+log.
 
 ```sh
 curl -s -X POST localhost:8080/v1/actions -H "X-API-Key: $KEY" -H 'Content-Type: application/json' -d '{
