@@ -53,6 +53,26 @@ func (s *Store) RejectPolicy(ctx context.Context, id string) (bool, error) {
 	return res.RowsAffected() > 0, err
 }
 
+// FindEquivalentPolicy returns an active or pending policy that is
+// semantically identical — same pattern, matcher, config, and effect. The
+// name is deliberately ignored: renaming a rule doesn't make it a new rule.
+// Disabled and rejected policies don't count, so retired rules can be
+// re-proposed.
+func (s *Store) FindEquivalentPolicy(ctx context.Context, pattern, matcherType string, config map[string]any, effect string) (*PolicyRow, error) {
+	var p PolicyRow
+	err := s.pool.QueryRow(ctx,
+		`SELECT id, name, status FROM policies
+		 WHERE status IN ('active', 'pending_approval')
+		   AND action_type_pattern = $1 AND matcher_type = $2
+		   AND matcher_config = $3 AND effect = $4
+		 LIMIT 1`, pattern, matcherType, config, effect).
+		Scan(&p.ID, &p.Name, &p.Status)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	return &p, err
+}
+
 // EnablePolicy re-activates a disabled policy. The enabler is recorded as
 // the approver — turning a rule back on is taking responsibility for it.
 // Descendants disabled by a cascade stay disabled; re-enable them explicitly.

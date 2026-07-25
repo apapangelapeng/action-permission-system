@@ -6,6 +6,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/apapangelapeng/action-permission-system/internal/engine"
@@ -49,6 +50,9 @@ func (h *handlers) createPolicy(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := spec.validate(); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if dup := h.refuseDuplicate(w, r.Context(), &spec); dup {
 		return
 	}
 
@@ -153,6 +157,11 @@ func (h *handlers) preparePolicyProposal(w http.ResponseWriter, r *http.Request,
 		writeError(w, http.StatusBadRequest, "invalid policy proposal: "+err.Error())
 		return "", false
 	}
+	if dup := h.refuseDuplicate(w, r.Context(), &spec); dup {
+		h.st.Audit(r.Context(), "bot", &bot.ID, "policy.duplicate_refused", "policy", "-",
+			map[string]any{"pattern": spec.ActionTypePattern, "effect": spec.Effect})
+		return "", false
+	}
 
 	depth := 1 // human-authored is 0; a bot proposal chains one level down
 	if limit := h.st.IntSetting(r.Context(), "policy_depth_limit", 3); depth > limit {
@@ -201,6 +210,21 @@ func (h *handlers) applyPolicyDecision(ctx context.Context, ar *store.ActionRequ
 		h.st.Audit(ctx, "human", &user.ID, "policy.rejected", "policy", policyID,
 			map[string]any{"via_action": ar.ID})
 	}
+}
+
+// refuseDuplicate writes a 409 and returns true when a semantically
+// equivalent policy (same pattern + matcher + config + effect; name ignored)
+// is already active or awaiting review. Duplicate rules make "turn this off"
+// quietly mean "find all its copies" — so they never get created.
+func (h *handlers) refuseDuplicate(w http.ResponseWriter, ctx context.Context, spec *policySpec) bool {
+	existing, err := h.st.FindEquivalentPolicy(ctx, spec.ActionTypePattern, spec.MatcherType, spec.MatcherConfig, spec.Effect)
+	if err != nil {
+		return false // not found (or lookup error) — let creation proceed
+	}
+	writeError(w, http.StatusConflict, fmt.Sprintf(
+		"an equivalent policy already exists: %s (%q, status %s) has the same pattern, matcher, and effect",
+		existing.ID, existing.Name, existing.Status))
+	return true
 }
 
 func str(v any) string {

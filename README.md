@@ -148,6 +148,12 @@ everything else (a hard invariant refuses any policy that would auto-allow
 activates the rule; denying rejects it; letting it expire rejects it too.
 Disabling a policy cascades to any bot policies it authorized.
 
+Duplicates are refused: if a policy with the same pattern, matcher, and
+effect is already active or awaiting review, creating another one — bot
+proposal or human — gets a 409 pointing at the existing rule. The name is
+ignored on purpose; renaming a rule doesn't make it a new rule. (Disabled
+and rejected policies don't block, so a retired rule can be re-proposed.)
+
 ```sh
 curl -s -X POST localhost:8080/v1/actions -H "X-API-Key: $KEY" -H 'Content-Type: application/json' -d '{
   "type": "aps.policy.create",
