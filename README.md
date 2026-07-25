@@ -108,8 +108,17 @@ A policy applies to **all bots** (global) or to **one bot** (`bot_id` set —
 acting bot's own; another bot's rules are invisible to it. Bot proposals
 are always pinned to the proposing bot — a bot may write rules for itself
 (with human approval), never for others; only humans create global rules.
-The equivalence check is scope-aware: two bots may hold equivalent rules.
-Names are not — a live name means exactly one rule, whatever its scope.
+The equivalence check is scope-aware: two bots may hold equivalent rules,
+and the same rule may exist both globally and per-bot — only a same-scope
+twin is refused. Names are not — a live name means exactly one rule,
+whatever its scope.
+
+Cross-scope precedence is effect precedence over the union of global rules
+plus the acting bot's own: a **bot-specific deny beats a global allow** for
+that bot (others are untouched), and — deliberately — a bot-specific allow
+can **not** pierce a global deny: safety rules like `no-destruction` are
+un-carve-able. When rules of the same effect match at equal priority, the
+bot-specific one is credited in the audit trail.
 
 ## Poke at it from the terminal
 
